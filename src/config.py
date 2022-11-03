@@ -51,7 +51,7 @@ class SpriteWorldConfig(Config):
     """
 
     x: Range = field(
-        default=Range(0, 1), metadata={"rv_type": "continuous", "latent_size": 10}
+        default=Range(0, 1), metadata={"rv_type": "continuous", "latent_size": 1}
     )
     y: Range = field(
         default=Range(0, 1), metadata={"rv_type": "continuous", "latent_size": 1}
@@ -66,28 +66,12 @@ class SpriteWorldConfig(Config):
     angle: Range = field(
         default=Range(0, 360), metadata={"rv_type": "continuous", "latent_size": 1}
     )
-    colour_ch_0: Range = field(
+    c0: Range = field(
         default=Range(0, 1), metadata={"rv_type": "continuous", "latent_size": 1}
     )
-    colour_ch_1: Range = field(
+    c1: Range = field(
         default=Range(0, 1), metadata={"rv_type": "continuous", "latent_size": 1}
     )
-    colour_ch_2: Range = field(
+    c2: Range = field(
         default=Range(0, 1), metadata={"rv_type": "continuous", "latent_size": 1}
     )
-
-    def shape_to_idx(self, shape):
-        if shape == "triangle":
-            return 0
-        elif shape == "square":
-            return 1
-        elif shape == "circle":
-            return 2
-
-    def idx_to_shape(self, idx):
-        if idx == 0:
-            return "triangle"
-        elif idx == 1:
-            return "square"
-        elif idx == 2:
-            return "circle"
