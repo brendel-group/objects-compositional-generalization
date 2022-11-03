@@ -51,27 +51,27 @@ class SpriteWorldConfig(Config):
     """
 
     x: Range = field(
-        default=Range(0, 1), metadata={"rv_type": "continuous", "latent_size": 1}
+        default=Range(0.2, 0.8), metadata={"rv_type": "continuous", "latent_size": 1}
     )
     y: Range = field(
-        default=Range(0, 1), metadata={"rv_type": "continuous", "latent_size": 1}
+        default=Range(0.2, 0.8), metadata={"rv_type": "continuous", "latent_size": 1}
     )
     shape: List[str] = field(
         default_factory=lambda: ["triangle", "square", "circle"],
         metadata={"rv_type": "categorical", "latent_size": 1},
     )
     scale: Range = field(
-        default=Range(0, 1), metadata={"rv_type": "continuous", "latent_size": 1}
+        default=Range(0.1, 0.5), metadata={"rv_type": "continuous", "latent_size": 1}
     )
     angle: Range = field(
         default=Range(0, 360), metadata={"rv_type": "continuous", "latent_size": 1}
     )
     c0: Range = field(
-        default=Range(0, 1), metadata={"rv_type": "continuous", "latent_size": 1}
+        default=Range(0.1, 0.9), metadata={"rv_type": "continuous", "latent_size": 1}
     )
     c1: Range = field(
-        default=Range(0, 1), metadata={"rv_type": "continuous", "latent_size": 1}
+        default=Range(0.1, 0.9), metadata={"rv_type": "continuous", "latent_size": 1}
     )
     c2: Range = field(
-        default=Range(0, 1), metadata={"rv_type": "continuous", "latent_size": 1}
+        default=Range(0.1, 0.9), metadata={"rv_type": "continuous", "latent_size": 1}
     )

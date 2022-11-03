@@ -1,10 +1,11 @@
 import torch
+import numpy as np
 
 from .config import Config
 
 
 def __sample_random(
-        cfg: Config, n_samples: int, n_slots: int, n_latents: int
+    cfg: Config, n_samples: int, n_slots: int, n_latents: int
 ) -> torch.Tensor:
     """
     Sample randomly in complete latent space.
@@ -32,16 +33,14 @@ def __sample_random(
                 cfg[latent].min, cfg[latent].max, (n_samples, n_slots, l_size)
             )
         elif l_type == "categorical":
-            z = torch.multinomial(
-                torch.tensor(
-                    [i for i, category in enumerate(cfg[latent])], dtype=torch.float32
-                ),
-                n_samples * n_slots * l_size,
-                replacement=True,
-            ).reshape(n_samples, n_slots, l_size)
+            z = np.random.choice(
+                [i for i, category in enumerate(cfg[latent])],
+                size=(n_samples, n_slots, l_size),
+            )
+            z = torch.from_numpy(z)
         else:
             raise ValueError(f"Latent type {l_type} not supported.")
 
-        z_out[:, :, i: i + l_size] = z
+        z_out[:, :, i : i + l_size] = z
         i += l_size
     return z_out

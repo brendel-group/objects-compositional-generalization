@@ -35,6 +35,7 @@ class SpriteWorldDataset(torch.utils.data.TensorDataset):
         n_samples: int,
         n_slots: int,
         cfg: SpriteWorldConfig,
+        sample_mode: str = "random",
         img_h: int = 64,
         img_w: int = 64,
     ):
@@ -54,7 +55,7 @@ class SpriteWorldDataset(torch.utils.data.TensorDataset):
                 factors=("x", "y", "shape", "angle", "scale", "c0", "c1", "c2")
             ),
         }
-        self.z = sample_latents(n_samples, n_slots, cfg)
+        self.z = sample_latents(n_samples, n_slots, cfg, sample_mode)
         self.__generate_ind = 0
 
         self.env = environment.Environment(
@@ -76,7 +77,6 @@ class SpriteWorldDataset(torch.utils.data.TensorDataset):
             images[sample_ind] = torch.from_numpy(
                 np.array(ts.observation["image"])[-1]
             )  # last one contains all sprites in on scene
-            print(images[sample_ind].shape)
         self.__generate_ind = 0
         return torch.stack(images, dim=0)
 
