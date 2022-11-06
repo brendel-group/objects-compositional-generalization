@@ -44,3 +44,49 @@ def __sample_random(
         z_out[:, :, i : i + l_size] = z
         i += l_size
     return z_out
+
+
+def __sample_diagonal(
+    cfg: Config, n_samples: int, n_slots: int, n_latents: int, delta: float
+) -> torch.Tensor:
+    """
+    Sample in diagonal latent space.
+
+    Args:
+        cfg: Config object.
+        n_samples: Number of samples.
+        n_slots: Number of slots (objects).
+        n_latents: Total number of latents.
+        delta: Distance from the diagonal [0, 1].
+
+    Returns:
+        z: Tensor of shape (n_samples, n_slots, n_latents).
+    """
+    z_out = torch.repeat_interleave(
+        torch.rand(n_samples, n_latents), n_slots, dim=0
+    ).reshape(n_samples, n_slots, n_latents)
+    z_out += (torch.rand(n_samples, n_slots, n_latents) - 0.5) * delta
+    z_out = torch.clip(z_out, 0, 1)
+
+    latents_metadata = cfg.get_latents_metadata()
+    i = 0
+    for latent in latents_metadata:
+        l_type, l_size = latents_metadata[latent]
+        if l_type == "continuous":
+            z_out[:, :, i : i + l_size] = (
+                cfg[latent].min
+                + (cfg[latent].max - cfg[latent].min) * z_out[:, :, i : i + l_size]
+            )
+        elif l_type == "discrete":
+            z_out[:, :, i : i + l_size] = torch.round(
+                cfg[latent].min
+                + (cfg[latent].max - cfg[latent].min) * z_out[:, :, i : i + l_size]
+            )
+        elif l_type == "categorical":
+            z_out[:, :, i : i + l_size] = torch.round(
+                (len(cfg[latent]) - 1) * z_out[:, :, i : i + l_size]
+            )
+        else:
+            raise ValueError(f"Latent type {l_type} not supported.")
+        i += l_size
+    return z_out

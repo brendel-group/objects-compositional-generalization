@@ -1,8 +1,4 @@
-from typing import Dict, Tuple, Union
-import math
 import torch
-import torch.nn as nn
-import dataclasses
 import numpy as np
 
 from spriteworld import sprite
@@ -26,6 +22,10 @@ def sample_latents(
 
     if sample_mode == "random":
         z = sampling_utils.__sample_random(cfg, n_samples, n_slots, n_latents)
+    elif sample_mode == "diagonal":
+        z = sampling_utils.__sample_diagonal(cfg, n_samples, n_slots, n_latents, delta)
+    else:
+        raise ValueError(f"Sample mode {sample_mode} not supported.")
     return z
 
 
@@ -38,6 +38,7 @@ class SpriteWorldDataset(torch.utils.data.TensorDataset):
         sample_mode: str = "random",
         img_h: int = 64,
         img_w: int = 64,
+        **kwargs,
     ):
         self.n_samples = n_samples
         self.n_slots = n_slots
@@ -55,7 +56,7 @@ class SpriteWorldDataset(torch.utils.data.TensorDataset):
                 factors=("x", "y", "shape", "angle", "scale", "c0", "c1", "c2")
             ),
         }
-        self.z = sample_latents(n_samples, n_slots, cfg, sample_mode)
+        self.z = sample_latents(n_samples, n_slots, cfg, sample_mode, **kwargs)
         self.__generate_ind = 0
 
         self.env = environment.Environment(
