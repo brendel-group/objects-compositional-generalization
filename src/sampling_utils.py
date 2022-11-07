@@ -62,13 +62,18 @@ def __sample_diagonal(
     Returns:
         z: Tensor of shape (n_samples, n_slots, n_latents).
     """
-    z_out = torch.repeat_interleave(
+    z_diag = torch.repeat_interleave(
         torch.rand(n_samples, n_latents), n_slots, dim=0
     ).reshape(n_samples, n_slots, n_latents)
-    z_out += (torch.rand(n_samples, n_slots, n_latents) - 0.5) * delta
-    z_out = torch.clip(z_out, 0, 1)
+    z_out = z_diag + (torch.rand(n_samples, n_slots, n_latents) - 0.5) * delta * 2
 
+    z_out = torch.where(z_out > 1, 2 - z_out, z_out)
+    z_out = torch.where(z_out < 0, z_out.abs(), z_out)
     latents_metadata = cfg.get_latents_metadata()
+
+    assert torch.max(z_out) <= 1
+    assert torch.min(z_out) >= 0
+
     i = 0
     for latent in latents_metadata:
         l_type, l_size = latents_metadata[latent]
@@ -83,8 +88,17 @@ def __sample_diagonal(
                 + (cfg[latent].max - cfg[latent].min) * z_out[:, :, i : i + l_size]
             )
         elif l_type == "categorical":
-            z_out[:, :, i : i + l_size] = torch.round(
-                (len(cfg[latent]) - 1) * z_out[:, :, i : i + l_size]
+            z_out[:, :, i : i + l_size] = torch.floor(
+                len(cfg[latent]) * z_diag[:, :, i : i + l_size]
+            )
+            mask = np.random.choice(
+                [0, 1], size=(n_samples, n_slots, l_size), p=[1 - delta, delta]
+            )  # taking same category with probability max((1-delta) + 1 / n_categories, 1)
+            mask = torch.from_numpy(mask)
+            z_out[:, :, i : i + l_size] = torch.where(
+                mask == 1,
+                torch.randint(0, len(cfg[latent]), (n_samples, n_slots, l_size)),
+                z_out[:, :, i : i + l_size],
             )
         else:
             raise ValueError(f"Latent type {l_type} not supported.")
