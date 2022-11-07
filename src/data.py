@@ -77,7 +77,7 @@ class SpriteWorldDataset(torch.utils.data.TensorDataset):
             ts = self.env.reset()
             images[sample_ind] = torch.from_numpy(
                 np.array(ts.observation["image"])[-1]
-            )  # last one contains all sprites in on scene
+            )  # last one contains all sprites in one scene
         self.__generate_ind = 0
         return torch.stack(images, dim=0)
 

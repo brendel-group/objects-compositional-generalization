@@ -50,7 +50,7 @@ def __sample_diagonal(
     cfg: Config, n_samples: int, n_slots: int, n_latents: int, delta: float
 ) -> torch.Tensor:
     """
-    Sample in diagonal latent space.
+    Sample near the diagonal in latent space.
 
     Args:
         cfg: Config object.
