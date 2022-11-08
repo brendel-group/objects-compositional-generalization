@@ -1,13 +1,14 @@
-import torch
+import warnings
+
 import numpy as np
+import torch
+import tqdm
+from spriteworld import environment, renderers, sprite, tasks
 
-from spriteworld import sprite
-from spriteworld import renderers
-from spriteworld import tasks
-from spriteworld import environment
-
-from .config import Config, SpriteWorldConfig
 from . import sampling_utils
+from .config import Config, SpriteWorldConfig
+
+warnings.filterwarnings("ignore", module="spriteworld")
 
 
 def sample_latents(
@@ -38,6 +39,7 @@ class SpriteWorldDataset(torch.utils.data.TensorDataset):
         sample_mode: str = "random",
         img_h: int = 64,
         img_w: int = 64,
+        delta: float = 1,
         **kwargs,
     ):
         self.n_samples = n_samples
@@ -45,6 +47,8 @@ class SpriteWorldDataset(torch.utils.data.TensorDataset):
         self.cfg = cfg
         self.img_h = img_h
         self.img_w = img_w
+        self.delta = delta
+        self.sample_mode = sample_mode
 
         self.renderer_config = {
             "image": renderers.PILRenderer(
@@ -56,7 +60,9 @@ class SpriteWorldDataset(torch.utils.data.TensorDataset):
                 factors=("x", "y", "shape", "angle", "scale", "c0", "c1", "c2")
             ),
         }
-        self.z = sample_latents(n_samples, n_slots, cfg, sample_mode, **kwargs)
+        self.z = sample_latents(
+            n_samples, n_slots, cfg, sample_mode, delta=delta, **kwargs
+        )
         self.__generate_ind = 0
 
         self.env = environment.Environment(
@@ -72,7 +78,10 @@ class SpriteWorldDataset(torch.utils.data.TensorDataset):
 
     def generate_from_latents(self) -> torch.Tensor:
         images = [None] * self.n_samples
-        for sample_ind in range(self.n_samples):
+        for sample_ind in tqdm.tqdm(
+            range(self.n_samples),
+            desc=f"Generating images (sampling: {self.sample_mode})",
+        ):
             self.__generate_ind = sample_ind
             ts = self.env.reset()
             images[sample_ind] = torch.from_numpy(
@@ -82,6 +91,15 @@ class SpriteWorldDataset(torch.utils.data.TensorDataset):
         return torch.stack(images, dim=0)
 
     def __generate(self):
+        # adjusting x to avoid overlapping sprites
+        left_x = -self.delta * (self.cfg.x.max - self.cfg.x.min) / self.n_slots
+        right_x = self.delta * (self.cfg.x.max - self.cfg.x.min) / self.n_slots
+
+        x = np.linspace(self.cfg.x.min, self.cfg.x.max, self.n_slots).reshape(-1, 1)
+        x += np.random.uniform(left_x, right_x, size=(self.n_slots, 1))
+        self.z[self.__generate_ind, :, 0] = torch.from_numpy(x).float().squeeze()
+
+        # generating sprites
         sample = self.z[self.__generate_ind]
         latents_metadata = self.cfg.get_latents_metadata()
         sampled_sprites = [None] * self.n_slots

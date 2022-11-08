@@ -1,5 +1,5 @@
-import torch
 import numpy as np
+import torch
 
 from .config import Config
 
@@ -65,7 +65,8 @@ def __sample_diagonal(
     z_diag = torch.repeat_interleave(
         torch.rand(n_samples, n_latents), n_slots, dim=0
     ).reshape(n_samples, n_slots, n_latents)
-    z_out = z_diag + (torch.rand(n_samples, n_slots, n_latents) - 0.5) * delta * 2
+    z_delta = (torch.rand(n_samples, n_slots, n_latents) - 0.5) * delta * 2
+    z_out = z_diag + z_delta
 
     z_out = torch.where(z_out > 1, 2 - z_out, z_out)
     z_out = torch.where(z_out < 0, z_out.abs(), z_out)

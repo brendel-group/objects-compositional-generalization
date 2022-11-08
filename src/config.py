@@ -51,7 +51,7 @@ class SpriteWorldConfig(Config):
     """
 
     x: Range = field(
-        default=Range(0.2, 0.8), metadata={"rv_type": "continuous", "latent_size": 1}
+        default=Range(0.3, 0.7), metadata={"rv_type": "continuous", "latent_size": 1}
     )
     y: Range = field(
         default=Range(0.2, 0.8), metadata={"rv_type": "continuous", "latent_size": 1}
