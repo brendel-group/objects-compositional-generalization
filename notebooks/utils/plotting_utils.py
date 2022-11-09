@@ -78,7 +78,6 @@ def plot_slots_scatter(dataset, n_slots, delta=0):
 def plot_slots_heatmap(dataset, n_slots, delta=0):
     slot_i, slot_j = np.random.choice(range(n_slots), size=[2], replace=False)
     metadata = dataset.cfg.get_latents_metadata()
-
     for i, latent in enumerate(metadata):
         x = dataset[:][1][:, slot_i, i]  # i-th latent of all slot_i-th slots
         y = dataset[:][1][:, slot_j, i]  # j-th latent of all slot_j-th slots

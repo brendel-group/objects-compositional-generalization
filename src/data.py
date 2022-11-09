@@ -22,9 +22,9 @@ def sample_latents(
     n_latents = cfg.get_total_latent_dim
 
     if sample_mode == "random":
-        z = sampling_utils.__sample_random(cfg, n_samples, n_slots, n_latents)
+        z = sampling_utils.sample_random(cfg, n_samples, n_slots, n_latents)
     elif sample_mode == "diagonal":
-        z = sampling_utils.__sample_diagonal(cfg, n_samples, n_slots, n_latents, delta)
+        z = sampling_utils.sample_diagonal(cfg, n_samples, n_slots, n_latents, delta)
     else:
         raise ValueError(f"Sample mode {sample_mode} not supported.")
     return z

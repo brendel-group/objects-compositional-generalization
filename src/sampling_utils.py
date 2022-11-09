@@ -4,7 +4,7 @@ import torch
 from .config import Config
 
 
-def __sample_random(
+def sample_random(
     cfg: Config, n_samples: int, n_slots: int, n_latents: int
 ) -> torch.Tensor:
     """
@@ -46,7 +46,33 @@ def __sample_random(
     return z_out
 
 
-def __sample_diagonal(
+def __sample_delta_diagonal_cube(
+    n_samples: int, n_slots: int, n_latents: int, delta: float, oversampling: int = 100
+) -> torch.Tensor:
+    _n = oversampling * n_samples
+    z_out = torch.Tensor(0, n_slots, n_latents)
+    while z_out.shape[0] < n_samples:
+        # sample randomly on diagonal
+        z_sampled = torch.repeat_interleave(
+            torch.rand(n_samples, n_latents), n_slots, dim=0
+        ).reshape(n_samples, n_slots, n_latents)
+
+        # apply random offset
+        eps = torch.rand(n_samples, n_slots, n_latents) * 2 * delta - delta
+        z_sampled += eps
+
+        # remove offset from one original sample
+        z_sampled[:, 0, :] -= eps[:, 0, :]
+
+        # only keep samples inside [0, 1]^{k×l}
+        mask = ((z_sampled - 0.5).abs() <= 0.5).flatten(1).all(1)
+        idx = mask.nonzero().squeeze(1)
+        z_out = torch.cat([z_out, z_sampled[idx]])
+
+    return z_out[:n_samples]
+
+
+def sample_diagonal(
     cfg: Config, n_samples: int, n_slots: int, n_latents: int, delta: float
 ) -> torch.Tensor:
     """
@@ -62,14 +88,7 @@ def __sample_diagonal(
     Returns:
         z: Tensor of shape (n_samples, n_slots, n_latents).
     """
-    z_diag = torch.repeat_interleave(
-        torch.rand(n_samples, n_latents), n_slots, dim=0
-    ).reshape(n_samples, n_slots, n_latents)
-    z_delta = (torch.rand(n_samples, n_slots, n_latents) - 0.5) * delta * 2
-    z_out = z_diag + z_delta
-
-    z_out = torch.where(z_out > 1, 2 - z_out, z_out)
-    z_out = torch.where(z_out < 0, z_out.abs(), z_out)
+    z_out = __sample_delta_diagonal_cube(n_samples, n_slots, n_latents, delta)
     latents_metadata = cfg.get_latents_metadata()
 
     assert torch.max(z_out) <= 1
@@ -90,16 +109,7 @@ def __sample_diagonal(
             )
         elif l_type == "categorical":
             z_out[:, :, i : i + l_size] = torch.floor(
-                len(cfg[latent]) * z_diag[:, :, i : i + l_size]
-            )
-            mask = np.random.choice(
-                [0, 1], size=(n_samples, n_slots, l_size), p=[1 - delta, delta]
-            )  # taking same category with probability max((1-delta) + 1 / n_categories, 1)
-            mask = torch.from_numpy(mask)
-            z_out[:, :, i : i + l_size] = torch.where(
-                mask == 1,
-                torch.randint(0, len(cfg[latent]), (n_samples, n_slots, l_size)),
-                z_out[:, :, i : i + l_size],
+                len(cfg[latent]) * z_out[:, :, i : i + l_size]
             )
         else:
             raise ValueError(f"Latent type {l_type} not supported.")
