@@ -49,20 +49,28 @@ def sample_random(
 def __sample_delta_diagonal_cube(
     n_samples: int, n_slots: int, n_latents: int, delta: float, oversampling: int = 100
 ) -> torch.Tensor:
+    """
+    Sample near the diagonal in latent space.
+    Firstly, we draw a point on a diagonal of [0, 1)^(n_slots, n_latents) cube.
+    Then, for every latent draw uniformly noise from n_slots-dimensional ball. For drawing uniformly inside the ball we
+    use the following theorem (http://compneuro.uwaterloo.ca/files/publications/voelker.2017.pdf):
+    if point uniformly sampled from the (n+1)-sphere, then n-first coordinates are uniformly sampled from the n-ball.
+    """
     _n = oversampling * n_samples
     z_out = torch.Tensor(0, n_slots, n_latents)
     while z_out.shape[0] < n_samples:
         # sample randomly on diagonal
         z_sampled = torch.repeat_interleave(
-            torch.rand(n_samples, n_latents), n_slots, dim=0
-        ).reshape(n_samples, n_slots, n_latents)
+            torch.rand(_n, n_latents), n_slots, dim=0
+        ).reshape(_n, n_slots, n_latents)
 
-        # apply random offset
-        eps = torch.rand(n_samples, n_slots, n_latents) * 2 * delta - delta
-        z_sampled += eps
+        # sample noise inside n-ball of radius delta
+        noise = torch.randn(_n, n_slots + 2, n_latents)
+        noise = noise / torch.norm(noise, dim=1, keepdim=True)  # points on n-sphere
+        noise = noise[:, :n_slots, :]  # remove two last points
+        noise = noise * delta  # scale to radius delta
 
-        # remove offset from one original sample
-        z_sampled[:, 0, :] -= eps[:, 0, :]
+        z_sampled += noise
 
         # only keep samples inside [0, 1]^{k×l}
         mask = ((z_sampled - 0.5).abs() <= 0.5).flatten(1).all(1)

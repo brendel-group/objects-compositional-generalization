@@ -28,8 +28,12 @@ def plot_latents_scatter(dataset):
     sns.pairplot(df, hue="shape", diag_kind="hist", corner=True, palette="tab10")
 
 
-def plot_slots_scatter(dataset, n_slots, delta=0):
-    slot_i, slot_j = np.random.choice(range(n_slots), size=[2], replace=False)
+def plot_slots_scatter(dataset, n_slots, delta=1, mode="random", inds=None):
+    if inds is None:
+        slot_i, slot_j = np.random.choice(range(n_slots), size=[2], replace=False)
+    else:
+        slot_i, slot_j = inds
+
     if slot_i < slot_j:
         slot_i, slot_j = slot_j, slot_i
 
@@ -38,7 +42,7 @@ def plot_slots_scatter(dataset, n_slots, delta=0):
     if dataset.cfg.get_total_latent_dim % 3 > 0:
         rows += 1
     fig, ax = plt.subplots(rows, 3, figsize=(10, 10))
-    fig.suptitle(f"delta={delta}")
+    fig.suptitle(f"mode={mode}\n delta={delta}")
     fig.tight_layout()
 
     for i, latent in enumerate(metadata):
@@ -59,16 +63,17 @@ def plot_slots_scatter(dataset, n_slots, delta=0):
             _max = dataset.cfg[latent].max
 
         _offset = (_max - _min) * 0.05
+        s = 25
         if latent == "x":
-            _offset = (_max - _min) * 0.7
+            _offset = (_max - _min) * 0.1
+            s = 15
 
         ax[ax_i, ax_j].scatter(
-            x, y, s=25, c=x, cmap="viridis", edgecolors="black", linewidth=0.2
+            x, y, s=s, c=x, cmap="viridis", edgecolors="black", linewidth=0.2
         )
 
-
-        ax[ax_i, ax_j].set_xlim(_min  - _offset, _max + _offset)
-        ax[ax_i, ax_j].set_ylim(_min  - _offset, _max + _offset)
+        ax[ax_i, ax_j].set_xlim(_min - _offset, _max + _offset)
+        ax[ax_i, ax_j].set_ylim(_min - _offset, _max + _offset)
         ax[ax_i, ax_j].set_xlabel(r"$z_{" + f"{slot_i}" + "_{" + f"{latent}" + "}}$")
         ax[ax_i, ax_j].set_ylabel(r"$z_{" + f"{slot_j}" + "_{" + f"{latent}" + "}}$")
     plt.subplots_adjust(wspace=0.3, hspace=0.3)
