@@ -125,6 +125,11 @@ class SpriteWorldDataset(torch.utils.data.TensorDataset):
         x_scaled = self.__adjust_x_coord()
         self.z[self.__generate_ind, :, 0] = x_scaled
 
+        # adjusting figure scale to avoid overlapping sprites
+        self.z[self.__generate_ind, :, 3] = self.cfg["scale"].min + (
+            self.z[self.__generate_ind, :, 3] - self.cfg["scale"].min
+        ) * 2 / max(2, self.n_slots)
+
         # generating sprites
         sample = self.z[self.__generate_ind]
         latents_metadata = self.cfg.get_latents_metadata()
