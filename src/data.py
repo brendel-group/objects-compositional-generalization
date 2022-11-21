@@ -21,10 +21,20 @@ def sample_latents(
 ) -> torch.Tensor:
     n_latents = cfg.get_total_latent_dim
 
-    if sample_mode == "random":
+    if sample_mode == "random" or (sample_mode == "diagonal" and delta == 1):
         z = sampling_utils.sample_random(cfg, n_samples, n_slots, n_latents)
     elif sample_mode == "diagonal":
-        z = sampling_utils.sample_diagonal(cfg, n_samples, n_slots, n_latents, delta)
+        z = sampling_utils.sample_diagonal(
+            cfg, n_samples, n_slots, n_latents, delta, mode="diagonal"
+        )
+    elif sample_mode == "off_diagonal":
+        z = sampling_utils.sample_diagonal(
+            cfg, n_samples, n_slots, n_latents, delta, mode="off_diagonal"
+        )
+    elif sample_mode == "pure_off_diagonal":
+        z = sampling_utils.sample_diagonal(
+            cfg, n_samples, n_slots, n_latents, delta, mode="pure_off_diagonal"
+        )
     else:
         raise ValueError(f"Sample mode {sample_mode} not supported.")
     return z
@@ -97,13 +107,19 @@ class SpriteWorldDataset(torch.utils.data.TensorDataset):
             x_diag = torch.zeros((self.n_slots, 1)) - 1
             while torch.max(x_diag) > 1 or torch.min(x_diag) < 0:
                 noise = torch.randn(1, self.n_slots + 2, 1)
-                noise = noise / torch.norm(noise, dim=1, keepdim=True)
+                noise = noise / torch.norm(noise, p=2, dim=1, keepdim=True)
                 noise = noise[:, : self.n_slots, :]
-                noise = noise * self.delta / (2 * self.n_slots)
+                noise = noise * self.delta / np.sqrt(2)
 
                 x_diag = np.random.rand() - 0.5
                 x_diag += noise.squeeze()
-                const = np.linspace(-0.5, 1, self.n_slots).reshape(-1, 1)
+                const = np.linspace(1 / (self.n_slots + 1), 1, self.n_slots).reshape(
+                    -1, 1
+                )
+                const = np.linspace(
+                    1 / self.n_slots, 1 + (1 / self.n_slots), self.n_slots + 1
+                )[:-1].reshape(-1, 1)
+
                 const = torch.from_numpy(const).float().squeeze()
                 x_diag += const
 
