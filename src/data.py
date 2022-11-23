@@ -103,8 +103,10 @@ class SpriteWorldDataset(torch.utils.data.TensorDataset):
         return torch.stack(images, dim=0)
 
     def __adjust_x_coord(self, generated_x) -> torch.Tensor:
-        """Generates x coordinate separately to avoid overlapping sprites."""
-
+        """
+        Generates x coordinate separately to avoid overlapping sprites.
+        Used only for diagonal sampling.
+        """
         if self.n_slots > 1:
             x_diag = torch.zeros(self.n_slots) - 1
             while torch.max(x_diag) > 1 or torch.min(x_diag) < 0:
@@ -124,11 +126,13 @@ class SpriteWorldDataset(torch.utils.data.TensorDataset):
                     x_diag = (x_diag * 2 - 1) * np.sqrt(2)
                     x_diag += ort_vec
 
+                    # taking point on diagonals with offset
                     x_diag[0] += (
                         (self.delta + 0.2) * 2 * np.power(-1, np.random.randint(2))
                     )
 
                 elif self.n_slots == 3 and self.no_overlap:
+                    # this works like const + \delta —— noise around preset values
                     const = np.linspace(0, 1, self.n_slots)
                     x_diag = torch.from_numpy(const) + ort_vec
 
@@ -153,18 +157,43 @@ class SpriteWorldDataset(torch.utils.data.TensorDataset):
                 self.cfg["x"].min + (self.cfg["x"].max - self.cfg["x"].min) * x_diag
             )
             return x_scaled
-
-        elif self.n_slots == 1:
+        else:
             return generated_x
+
+    def __adjust_shape(self, generated_shape) -> torch.Tensor:
+        """
+        Generates shape separately to avoid same figures for off_diagonal and pure_off_diagonal sampling.
+        """
+        while (
+            sum(
+                [
+                    generated_shape[0].item() == generated_shape[i].item()
+                    for i in range(self.n_slots)
+                ]
+            )
+            == self.n_slots
+        ):
+            generated_shape = torch.rand(self.n_slots)
+            generated_shape = torch.floor(len(self.cfg["shape"]) * generated_shape)
+        return generated_shape
 
     def __generate(self):
         """Generates a list of sprites from generated latents for the environment."""
 
-        # adjusting x to avoid overlapping sprites
-        x_scaled = self.__adjust_x_coord(self.z[self.__generate_ind, :, 0])
-        self.z[self.__generate_ind, :, 0] = x_scaled
+        if self.sample_mode == "diagonal":
+            # adjusting x to avoid overlapping sprites
+            x_scaled = self.__adjust_x_coord(self.z[self.__generate_ind, :, 0])
+            self.z[self.__generate_ind, :, 0] = x_scaled
 
-        # adjusting figure scale to avoid overlapping sprites
+        if (
+            self.sample_mode == "off_diagonal"
+            or self.sample_mode == "pure_off_diagonal"
+        ):
+            # removing same shapes (this artifact comes from "floor" rounding)
+            shape = self.__adjust_shape(self.z[self.__generate_ind, :, 2])
+            self.z[self.__generate_ind, :, 2] = shape
+
+        # adjusting figure scale to avoid severely overlapping sprites
         self.z[self.__generate_ind, :, 3] = self.cfg["scale"].min + (
             self.z[self.__generate_ind, :, 3] - self.cfg["scale"].min
         ) * (1 / self.n_slots) * (1 - self.delta)
