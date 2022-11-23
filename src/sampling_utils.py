@@ -46,7 +46,7 @@ def sample_random(
     return z_out
 
 
-def __sample_delta_pure_off_diagonal_cube(
+def sample_delta_pure_off_diagonal_cube(
     n_samples: int, n_slots: int, n_latents: int, delta: float, oversampling: int = 100
 ) -> torch.Tensor:
     """
@@ -71,7 +71,7 @@ def __sample_delta_pure_off_diagonal_cube(
     return z_out[:n_samples]
 
 
-def __sample_delta_off_diagonal_cube(
+def sample_delta_off_diagonal_cube(
     n_samples: int, n_slots: int, n_latents: int, delta: float, oversampling: int = 100
 ) -> torch.Tensor:
     """
@@ -103,7 +103,7 @@ def __sample_delta_off_diagonal_cube(
     return z_out[:n_samples]
 
 
-def __sample_delta_diagonal_cube(
+def sample_delta_diagonal_cube(
     n_samples: int, n_slots: int, n_latents: int, delta: float, oversampling: int = 100
 ) -> torch.Tensor:
     """
@@ -177,11 +177,11 @@ def sample_diagonal(
         z: Tensor of shape (n_samples, n_slots, n_latents).
     """
     if mode == "diagonal":
-        z_out = __sample_delta_diagonal_cube(n_samples, n_slots, n_latents, delta)
+        z_out = sample_delta_diagonal_cube(n_samples, n_slots, n_latents, delta)
     elif mode == "off_diagonal":
-        z_out = __sample_delta_off_diagonal_cube(n_samples, n_slots, n_latents, delta)
+        z_out = sample_delta_off_diagonal_cube(n_samples, n_slots, n_latents, delta)
     elif mode == "pure_off_diagonal":
-        z_out = __sample_delta_pure_off_diagonal_cube(
+        z_out = sample_delta_pure_off_diagonal_cube(
             n_samples, n_slots, n_latents, delta
         )
     else:

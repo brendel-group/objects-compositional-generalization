@@ -118,12 +118,31 @@ class SpriteWorldDataset(torch.utils.data.TensorDataset):
         self.__generate_ind = 0
         return torch.stack(images, dim=0)
 
-    def __adjust_x_coord(self, generated_x) -> torch.Tensor:
+    def __adjust_x_coord(self, generated_x_y) -> torch.Tensor:
         """
         Generates x coordinate separately to avoid overlapping sprites.
-        Used only for diagonal sampling.
         """
-        if self.n_slots > 1 and self.delta <= 0.2:
+        if (
+            self.sample_mode in ["off_diagonal", "pure_off_diagonal"]
+            and self.n_slots == 3
+        ):
+            generated_x = generated_x_y[:, 0]
+
+            dists = torch.cdist(generated_x_y, generated_x_y).flatten()
+            dists = dists[dists != 0]
+
+            inds = np.argsort(generated_x.numpy())
+            sorted_array = generated_x[inds]
+
+            if dists.min() < 0.1:
+                for i in range(self.n_slots - 1):
+                    if sorted_array[i + 1] - sorted_array[i] < 0.2:
+                        generated_x[inds[i + 1]] += 0.1
+                        generated_x[inds[i]] -= 0.1
+
+            return generated_x
+
+        elif self.sample_mode == "diagonal" and self.n_slots > 1 and self.delta <= 0.2:
             x_diag = torch.zeros(self.n_slots) - 1
             while torch.max(x_diag) > 1 or torch.min(x_diag) < 0:
                 x_diag = torch.repeat_interleave(torch.rand(1), self.n_slots)
@@ -174,6 +193,7 @@ class SpriteWorldDataset(torch.utils.data.TensorDataset):
             )
             return x_scaled
         else:
+            generated_x = generated_x_y[:, 0]
             return generated_x
 
     def __adjust_shape(self, generated_shape) -> torch.Tensor:
@@ -196,15 +216,12 @@ class SpriteWorldDataset(torch.utils.data.TensorDataset):
     def __generate(self):
         """Generates a list of sprites from generated latents for the environment."""
 
-        if self.sample_mode == "diagonal":
+        if self.sample_mode in ["diagonal", "off_diagonal", "pure_off_diagonal"]:
             # adjusting x to avoid overlapping sprites
-            x_scaled = self.__adjust_x_coord(self.z[self.__generate_ind, :, 0])
+            x_scaled = self.__adjust_x_coord(self.z[self.__generate_ind, :, :2])
             self.z[self.__generate_ind, :, 0] = x_scaled
 
-        if (
-            self.sample_mode == "off_diagonal"
-            or self.sample_mode == "pure_off_diagonal"
-        ):
+        if self.sample_mode in ["off_diagonal", "pure_off_diagonal"]:
             # removing same shapes (this artifact comes from "floor" rounding)
             shape = self.__adjust_shape(self.z[self.__generate_ind, :, 2])
             self.z[self.__generate_ind, :, 2] = shape

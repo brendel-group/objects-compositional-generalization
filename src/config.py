@@ -67,7 +67,7 @@ class SpriteWorldConfig(Config):
             "star_4",
             # "star_5",
             "star_6",
-            "spoke_3",
+            # "spoke_3",
             "spoke_4",
             # "spoke_5",
             # "spoke_6",
