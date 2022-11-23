@@ -57,7 +57,21 @@ class SpriteWorldConfig(Config):
         default=Range(0.2, 0.8), metadata={"rv_type": "continuous", "latent_size": 1}
     )
     shape: List[str] = field(
-        default_factory=lambda: ["triangle", "square", "circle"],
+        default_factory=lambda: [
+            "triangle",
+            "square",
+            "circle",
+            "pentagon",
+            # "hexagon",
+            # "octagon",
+            "star_4",
+            # "star_5",
+            "star_6",
+            "spoke_3",
+            "spoke_4",
+            # "spoke_5",
+            # "spoke_6",
+        ],
         metadata={"rv_type": "categorical", "latent_size": 1},
     )
     scale: Range = field(
