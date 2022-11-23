@@ -34,7 +34,7 @@ def plot_slots_scatter(dataset, n_slots, delta=1, mode="random", inds=None):
     else:
         slot_i, slot_j = inds
 
-    if slot_i < slot_j:
+    if slot_j < slot_i:
         slot_i, slot_j = slot_j, slot_i
 
     metadata = dataset.cfg.get_latents_metadata()

@@ -50,6 +50,7 @@ class SpriteWorldDataset(torch.utils.data.TensorDataset):
         img_h: int = 64,
         img_w: int = 64,
         delta: float = 1,
+        no_overlap: bool = False,
         **kwargs,
     ):
         self.n_samples = n_samples
@@ -59,6 +60,7 @@ class SpriteWorldDataset(torch.utils.data.TensorDataset):
         self.img_w = img_w
         self.delta = delta
         self.sample_mode = sample_mode
+        self.no_overlap = no_overlap
 
         self.renderer_config = {
             "image": renderers.PILRenderer(
@@ -100,51 +102,72 @@ class SpriteWorldDataset(torch.utils.data.TensorDataset):
         self.__generate_ind = 0
         return torch.stack(images, dim=0)
 
-    def __adjust_x_coord(self) -> torch.Tensor:
+    def __adjust_x_coord(self, generated_x) -> torch.Tensor:
         """Generates x coordinate separately to avoid overlapping sprites."""
 
         if self.n_slots > 1:
-            x_diag = torch.zeros((self.n_slots, 1)) - 1
+            x_diag = torch.zeros(self.n_slots) - 1
             while torch.max(x_diag) > 1 or torch.min(x_diag) < 0:
-                noise = torch.randn(1, self.n_slots + 2, 1)
-                noise = noise / torch.norm(noise, p=2, dim=1, keepdim=True)
-                noise = noise[:, : self.n_slots, :]
-                noise = noise * self.delta / np.sqrt(2)
+                x_diag = torch.repeat_interleave(torch.rand(1), self.n_slots)
 
-                x_diag = np.random.rand() - 0.5
-                x_diag += noise.squeeze()
-                const = np.linspace(1 / (self.n_slots + 1), 1, self.n_slots).reshape(
-                    -1, 1
+                noise = torch.randn(self.n_slots + 2)
+                noise = noise / torch.norm(noise, keepdim=True)
+                noise = noise[: self.n_slots]
+
+                ort_vec = noise - x_diag * torch.dot(noise, x_diag) / torch.dot(
+                    x_diag, x_diag
                 )
-                const = np.linspace(
-                    1 / self.n_slots, 1 + (1 / self.n_slots), self.n_slots + 1
-                )[:-1].reshape(-1, 1)
+                ort_vec = ort_vec / torch.norm(ort_vec, keepdim=True)
+                ort_vec *= torch.pow(torch.rand(1), 1 / (self.n_slots - 1)) * self.delta
 
-                const = torch.from_numpy(const).float().squeeze()
-                x_diag += const
+                if self.n_slots == 2 and self.no_overlap:
+                    x_diag = (x_diag * 2 - 1) * np.sqrt(2)
+                    x_diag += ort_vec
 
-                for i in range(self.n_slots):
-                    if x_diag[i].item() > 1:
-                        x_diag[i] = x_diag[i] - 1
-                    elif x_diag[i].item() < 0:
-                        x_diag[i] = x_diag[i] + 1
+                    x_diag[0] += (
+                        (self.delta + 0.2) * 2 * np.power(-1, np.random.randint(2))
+                    )
 
-                x_scaled = (
-                    self.cfg["x"].min + (self.cfg["x"].max - self.cfg["x"].min) * x_diag
-                )
-        return x_scaled
+                elif self.n_slots == 3 and self.no_overlap:
+                    const = np.linspace(0, 1, self.n_slots)
+                    x_diag = torch.from_numpy(const) + ort_vec
+
+                else:
+                    if self.no_overlap:
+                        print("No overlap not supported for n_slots > 3, ignoring.")
+
+                    x_diag += ort_vec
+                    const = np.linspace(
+                        1 / self.n_slots, 1 + (1 / self.n_slots), self.n_slots + 1
+                    )[:-1]
+
+                    const = torch.from_numpy(const).float().squeeze()
+                    x_diag += const
+
+                    for i in range(self.n_slots):
+                        if x_diag[i].item() > 1:
+                            x_diag[i] = x_diag[i] - 1
+                        elif x_diag[i].item() < 0:
+                            x_diag[i] = x_diag[i] + 1
+            x_scaled = (
+                self.cfg["x"].min + (self.cfg["x"].max - self.cfg["x"].min) * x_diag
+            )
+            return x_scaled
+
+        elif self.n_slots == 1:
+            return generated_x
 
     def __generate(self):
         """Generates a list of sprites from generated latents for the environment."""
 
         # adjusting x to avoid overlapping sprites
-        x_scaled = self.__adjust_x_coord()
+        x_scaled = self.__adjust_x_coord(self.z[self.__generate_ind, :, 0])
         self.z[self.__generate_ind, :, 0] = x_scaled
 
         # adjusting figure scale to avoid overlapping sprites
         self.z[self.__generate_ind, :, 3] = self.cfg["scale"].min + (
             self.z[self.__generate_ind, :, 3] - self.cfg["scale"].min
-        ) * 2 / max(2, self.n_slots)
+        ) * (1 / self.n_slots) * (1 - self.delta)
 
         # generating sprites
         sample = self.z[self.__generate_ind]
