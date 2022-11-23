@@ -16,12 +16,13 @@ def sample_latents(
     n_slots: int,
     cfg: Config,
     sample_mode: str = "random",
-    correlation: float = 0,
-    delta: float = 0,
+    delta: float = 1,
 ) -> torch.Tensor:
-    n_latents = cfg.get_total_latent_dim
 
-    if sample_mode == "random" or (sample_mode == "diagonal" and delta == 1):
+    assert 0 < delta <= 1, "Delta must be in (0, 1]."
+
+    n_latents = cfg.get_total_latent_dim
+    if sample_mode == "random":
         z = sampling_utils.sample_random(cfg, n_samples, n_slots, n_latents)
     elif sample_mode == "diagonal":
         z = sampling_utils.sample_diagonal(
@@ -41,6 +42,21 @@ def sample_latents(
 
 
 class SpriteWorldDataset(torch.utils.data.TensorDataset):
+    """
+    Class for generating sprites from Sprite-World environment.
+
+    Args:
+        n_samples: Number of samples to generate.
+        n_slots: Number of objects in scene.
+        cfg: Instance of SpriteWorldConfig class, determines the range of values for each latent variable.
+        sample_mode: Sampling mode for latent variables ("random", "diagonal", "off_diagonal", "pure_off_diagonal").
+        img_h: Height of the generated images.
+        img_w: Width of the generated images.
+        delta: Delta for "diagonal", "off_diagonal" and "pure_off_diagonal" sampling. Should be in (0, 1].
+        no_overlap: Whether to allow overlapping of sprites.
+            Applies only when delta <= 0.2 & n_slots < 4 & sample_mode=="diagonal", otherwise ignored.
+    """
+
     def __init__(
         self,
         n_samples: int,
@@ -85,10 +101,10 @@ class SpriteWorldDataset(torch.utils.data.TensorDataset):
             max_episode_length=1,
         )
 
-        self.x = self.generate_from_latents().detach()
+        self.x = self.__generate_from_latents().detach()
         super().__init__(self.x, self.z)
 
-    def generate_from_latents(self) -> torch.Tensor:
+    def __generate_from_latents(self) -> torch.Tensor:
         images = [None] * self.n_samples
         for sample_ind in tqdm.tqdm(
             range(self.n_samples),
@@ -107,7 +123,7 @@ class SpriteWorldDataset(torch.utils.data.TensorDataset):
         Generates x coordinate separately to avoid overlapping sprites.
         Used only for diagonal sampling.
         """
-        if self.n_slots > 1:
+        if self.n_slots > 1 and self.delta <= 0.2:
             x_diag = torch.zeros(self.n_slots) - 1
             while torch.max(x_diag) > 1 or torch.min(x_diag) < 0:
                 x_diag = torch.repeat_interleave(torch.rand(1), self.n_slots)
@@ -196,7 +212,7 @@ class SpriteWorldDataset(torch.utils.data.TensorDataset):
         # adjusting figure scale to avoid severely overlapping sprites
         self.z[self.__generate_ind, :, 3] = self.cfg["scale"].min + (
             self.z[self.__generate_ind, :, 3] - self.cfg["scale"].min
-        ) * (1 / self.n_slots) * (1 - self.delta)
+        ) * (1 / self.n_slots) * max((1 - self.delta), 0.7)
 
         # generating sprites
         sample = self.z[self.__generate_ind]
