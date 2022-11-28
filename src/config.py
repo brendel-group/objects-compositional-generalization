@@ -51,7 +51,7 @@ class SpriteWorldConfig(Config):
     """
 
     x: Range = field(
-        default=Range(0.15, 0.85), metadata={"rv_type": "continuous", "latent_size": 1}
+        default=Range(0.1, 0.9), metadata={"rv_type": "continuous", "latent_size": 1}
     )
     y: Range = field(
         default=Range(0.2, 0.8), metadata={"rv_type": "continuous", "latent_size": 1}
@@ -62,9 +62,9 @@ class SpriteWorldConfig(Config):
             "square",
             "circle",
             "pentagon",
-            # "hexagon",
-            # "octagon",
-            "star_4",
+            "hexagon",
+            # "octagon", # looks like a circle, when scale is to small
+            # "star_4",
             # "star_5",
             "star_6",
             # "spoke_3",
@@ -75,7 +75,7 @@ class SpriteWorldConfig(Config):
         metadata={"rv_type": "categorical", "latent_size": 1},
     )
     scale: Range = field(
-        default=Range(0.1, 0.45), metadata={"rv_type": "continuous", "latent_size": 1}
+        default=Range(0.09, 0.22), metadata={"rv_type": "continuous", "latent_size": 1}
     )
     angle: Range = field(
         default=Range(0, 360), metadata={"rv_type": "continuous", "latent_size": 1}

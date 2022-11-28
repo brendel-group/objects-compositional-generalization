@@ -54,7 +54,8 @@ class SpriteWorldDataset(torch.utils.data.TensorDataset):
         img_w: Width of the generated images.
         delta: Delta for "diagonal", "off_diagonal" and "pure_off_diagonal" sampling. Should be in (0, 1].
         no_overlap: Whether to allow overlapping of sprites.
-            Applies only when delta <= 0.2 & n_slots < 4 & sample_mode=="diagonal", otherwise ignored.
+            For sample_mode=="diagonal" and "off_diagonal" provided delta decreased to the range where it is possible
+            to have no overlapping figures.
     """
 
     def __init__(
@@ -88,11 +89,22 @@ class SpriteWorldDataset(torch.utils.data.TensorDataset):
                 factors=("x", "y", "shape", "angle", "scale", "c0", "c1", "c2")
             ),
         }
-        self.z = sample_latents(
-            n_samples, n_slots, cfg, sample_mode, delta=delta, **kwargs
-        )
-        self.__generate_ind = 0
 
+        if self.no_overlap:
+            # here we decrease delta to the range where it is possible to have no overlapping figures analytically it
+            # is enough to have max_delta = (1 / (n_slots)) * 0.5 to have not intersecting x-coordinates,
+            # but we decrease it a bit more due to the fact that figures also have some width
+            max_delta = (1 / (self.n_slots + 2)) * 0.5
+            if self.delta > max_delta:
+                print(
+                    f"Delta is too big for 'no_overlap' mode, setting it to {max_delta}."
+                )
+                self.delta = max_delta
+        self.z = sample_latents(
+            n_samples, n_slots, cfg, sample_mode, delta=self.delta, **kwargs
+        )
+
+        self.__generate_ind = 0
         self.env = environment.Environment(
             task=tasks.NoReward(),
             action_space=None,
@@ -122,29 +134,9 @@ class SpriteWorldDataset(torch.utils.data.TensorDataset):
         """
         Generates x coordinate separately to avoid overlapping sprites.
         """
-        if (
-            self.sample_mode in ["off_diagonal", "pure_off_diagonal"]
-            and self.n_slots == 3
-        ):
-            generated_x = generated_x_y[:, 0]
 
-            dists = torch.cdist(generated_x_y, generated_x_y).flatten()
-            dists = dists[dists != 0]
-
-            inds = np.argsort(generated_x.numpy())
-            sorted_array = generated_x[inds]
-
-            if dists.min() < 0.1:
-                for i in range(self.n_slots - 1):
-                    if sorted_array[i + 1] - sorted_array[i] < 0.2:
-                        generated_x[inds[i + 1]] += 0.1
-                        generated_x[inds[i]] -= 0.1
-
-            return generated_x
-
-        elif self.sample_mode == "diagonal" and self.n_slots > 1 and self.delta <= 0.2:
-            x_diag = torch.zeros(self.n_slots) - 1
-            while torch.max(x_diag) > 1 or torch.min(x_diag) < 0:
+        if self.sample_mode in ["diagonal", "off_diagonal"] and self.n_slots > 1:
+            if self.sample_mode == "diagonal":
                 x_diag = torch.repeat_interleave(torch.rand(1), self.n_slots)
 
                 noise = torch.randn(self.n_slots + 2)
@@ -156,38 +148,32 @@ class SpriteWorldDataset(torch.utils.data.TensorDataset):
                 )
                 ort_vec = ort_vec / torch.norm(ort_vec, keepdim=True)
                 ort_vec *= torch.pow(torch.rand(1), 1 / (self.n_slots - 1)) * self.delta
+                x_diag += ort_vec
 
-                if self.n_slots == 2 and self.no_overlap:
-                    x_diag = (x_diag * 2 - 1) * np.sqrt(2)
-                    x_diag += ort_vec
+            elif self.sample_mode == "off_diagonal":
+                _n = 10
+                z_out = torch.Tensor(0, self.n_slots, 1)
+                while z_out.shape[0] < _n:
+                    z_sampled = torch.rand(_n, self.n_slots, 1)
+                    diag = torch.ones(_n, self.n_slots, 1)
+                    ort_vec = z_sampled - diag * (z_sampled * diag).sum(
+                        axis=1, keepdim=True
+                    ) / (diag * diag).sum(axis=1, keepdim=True)
+                    off_d_mask = (ort_vec.norm(dim=1) > self.delta).flatten(1).all(1)
+                    z_sampled = z_sampled[off_d_mask]
 
-                    # taking point on diagonals with offset
-                    x_diag[0] += (
-                        (self.delta + 0.2) * 2 * np.power(-1, np.random.randint(2))
-                    )
+                    z_out = torch.cat([z_out, z_sampled])
+                x_diag = z_out[:1].squeeze()
 
-                elif self.n_slots == 3 and self.no_overlap:
-                    # this works like const + \delta —— noise around preset values
-                    const = np.linspace(0, 1, self.n_slots)
-                    x_diag = torch.from_numpy(const) + ort_vec
+            if self.no_overlap:
+                k = 1 / self.n_slots
+            else:
+                k = ((1 / self.n_slots) + self.delta) / 2
 
-                else:
-                    if self.no_overlap:
-                        print("No overlap not supported for n_slots > 3, ignoring.")
+            const = torch.FloatTensor([k * i for i in range(self.n_slots)])
+            x_diag += const
+            x_diag = x_diag % 1
 
-                    x_diag += ort_vec
-                    const = np.linspace(
-                        1 / self.n_slots, 1 + (1 / self.n_slots), self.n_slots + 1
-                    )[:-1]
-
-                    const = torch.from_numpy(const).float().squeeze()
-                    x_diag += const
-
-                    for i in range(self.n_slots):
-                        if x_diag[i].item() > 1:
-                            x_diag[i] = x_diag[i] - 1
-                        elif x_diag[i].item() < 0:
-                            x_diag[i] = x_diag[i] + 1
             x_scaled = (
                 self.cfg["x"].min + (self.cfg["x"].max - self.cfg["x"].min) * x_diag
             )
@@ -229,7 +215,7 @@ class SpriteWorldDataset(torch.utils.data.TensorDataset):
         # adjusting figure scale to avoid severely overlapping sprites
         self.z[self.__generate_ind, :, 3] = self.cfg["scale"].min + (
             self.z[self.__generate_ind, :, 3] - self.cfg["scale"].min
-        ) * (1 / self.n_slots) * max((1 - self.delta), 0.7)
+        ) * (1 / (self.n_slots + 1))
 
         # generating sprites
         sample = self.z[self.__generate_ind]
