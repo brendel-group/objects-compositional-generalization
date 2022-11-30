@@ -43,6 +43,19 @@ class Config:
             and config_field.metadata.get("latent_size")
         }
 
+    def get_ranges(self) -> Dict[str, Range]:
+        result = {}
+        for field_name in fields(self):
+            if field_name.metadata.get("rv_type") != "categorical":
+                result[field_name.name] = Range(
+                    min=self[field_name.name].min, max=self[field_name.name].max
+                )
+            elif field_name.metadata.get("rv_type") == "categorical":
+                result[field_name.name] = Range(
+                    min=0, max=len(self[field_name.name]) - 1
+                )
+        return result
+
 
 @dataclasses.dataclass
 class SpriteWorldConfig(Config):

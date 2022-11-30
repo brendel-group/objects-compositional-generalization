@@ -12,7 +12,13 @@ def plot_random_dataset_images(dataset, rows=2, cols=3):
 
     for row in range(rows):
         for col in range(cols):
-            ax[row, col].imshow(dataset[np.random.choice(range(len(dataset)))][0])
+            sample = (
+                dataset[np.random.choice(range(len(dataset)))][0]
+                .reshape(64, 64, 3)
+                .numpy()
+                .astype(np.uint8)
+            )
+            ax[row, col].imshow(sample)
     plt.tight_layout()
 
     plt.show()

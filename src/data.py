@@ -1,4 +1,5 @@
 import warnings
+from typing import Optional, Callable
 
 import numpy as np
 import torch
@@ -68,6 +69,7 @@ class SpriteWorldDataset(torch.utils.data.TensorDataset):
         img_w: int = 64,
         delta: float = 1,
         no_overlap: bool = False,
+        transform: Optional[Callable] = None,
         **kwargs,
     ):
         self.n_samples = n_samples
@@ -78,6 +80,7 @@ class SpriteWorldDataset(torch.utils.data.TensorDataset):
         self.delta = delta
         self.sample_mode = sample_mode
         self.no_overlap = no_overlap
+        self.transform = transform
 
         self.renderer_config = {
             "image": renderers.PILRenderer(
@@ -124,11 +127,20 @@ class SpriteWorldDataset(torch.utils.data.TensorDataset):
         ):
             self.__generate_ind = sample_ind
             ts = self.env.reset()
-            images[sample_ind] = torch.from_numpy(
-                np.array(ts.observation["image"])[-1]
-            )  # last one contains all sprites in one scene
+            images[sample_ind] = np.array(ts.observation["image"])[
+                -1
+            ]  # last one contains all sprites in one scene
+
+            if self.transform is not None:
+                images[sample_ind] = self.transform(images[sample_ind])
+            else:
+                images[sample_ind] = torch.from_numpy(images[sample_ind])
+
         self.__generate_ind = 0
-        return torch.stack(images, dim=0)
+        stacked_images = (
+            torch.stack(images).to(torch.float32).reshape(-1, 3, self.img_h, self.img_w)
+        )
+        return stacked_images
 
     def __adjust_x_coord(self, generated_x_y) -> torch.Tensor:
         """
