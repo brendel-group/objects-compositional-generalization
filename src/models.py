@@ -45,6 +45,7 @@ class SlotMLP(torch.nn.Module):
                     nn.Linear(hidden_dims[-1] * 4, 256),
                     nn.ELU(),
                     nn.Linear(256, n_slot_latents),
+                    nn.Sigmoid()
                 )
                 for _ in range(n_slots)
             ]
@@ -97,6 +98,7 @@ class FlattenedSlotMLP(torch.nn.Module):
             nn.Linear(hidden_dims[-1] * 4, 256),
             nn.ELU(),
             nn.Linear(256, n_slots * n_slot_latents),
+            nn.Sigmoid()
         )
 
     def forward(self, x):
