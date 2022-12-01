@@ -5,7 +5,7 @@ from typing import List
 
 
 class SlotMLP(torch.nn.Module):
-    """SlotMLP is based on Vanilla VAE encoder."""
+    """SlotMLP is based on Vanilla VAE encoder. It takes in an image and outputs a latent vector for each slot."""
 
     def __init__(
         self,
@@ -58,7 +58,8 @@ class SlotMLP(torch.nn.Module):
 
 
 class FlattenedSlotMLP(torch.nn.Module):
-    """SlotMLP is based on Vanilla VAE encoder."""
+    """FlattenedSlotMLP is based on Vanilla VAE encoder. It takes in an image and outputs a flattened latent vector
+    for all slots."""
 
     def __init__(
         self,
