@@ -4,105 +4,112 @@ import numpy as np
 from typing import List
 
 
-class SlotMLP(torch.nn.Module):
-    """SlotMLP is based on Vanilla VAE encoder. It takes in an image and outputs a latent vector for each slot."""
+class View(nn.Module):
+    def __init__(self, size):
+        super(View, self).__init__()
+        self.size = size
 
+    def forward(self, tensor):
+        return tensor.view(self.size)
+
+
+def get_encoder(in_channels, out_dim):
+    encoder = nn.Sequential(
+        nn.Conv2d(in_channels, 32, 4, 2, 1),
+        nn.ELU(),
+        nn.Conv2d(32, 32, 4, 2, 1),
+        nn.ELU(),
+        nn.Conv2d(32, 32, 4, 2, 1),
+        nn.ELU(),
+        nn.Conv2d(32, 32, 4, 2, 1),
+        nn.ELU(),
+        View((-1, 32 * 4 * 4)),
+        nn.Linear(32 * 4 * 4, 256),
+        nn.ELU(),
+        nn.Linear(256, 256),
+        nn.ELU(),
+        nn.Linear(256, out_dim),
+    )
+    return encoder
+
+
+def get_decoder(in_dim, out_channels):
+    decoder = nn.Sequential(
+        nn.Linear(in_dim, 256),
+        nn.ELU(),
+        nn.Linear(256, 256),
+        nn.ELU(),
+        nn.Linear(256, 32 * 4 * 4),
+        nn.ELU(),
+        View((-1, 32, 4, 4)),
+        nn.ConvTranspose2d(32, 32, 4, 2, 1),
+        nn.ELU(),
+        nn.ConvTranspose2d(32, 32, 4, 2, 1),
+        nn.ELU(),
+        nn.ConvTranspose2d(32, 32, 4, 2, 1),
+        nn.ELU(),
+        nn.ConvTranspose2d(32, out_channels, 4, 2, 1),
+    )
+    return decoder
+
+
+class SlotMLPMonotonic(torch.nn.Module):
     def __init__(
         self,
         in_channels: int,
         n_slots: int,
         n_slot_latents: int,
-        hidden_dims: List = None,
     ) -> None:
-        super(SlotMLP, self).__init__()
-
-        self.model_type = "slots_regressor"
-
-        modules = []
-        if hidden_dims is None:
-            hidden_dims = [32, 64, 128, 256, 512]
-
-        for h_dim in hidden_dims:
-            modules.append(
-                nn.Sequential(
-                    nn.Conv2d(
-                        in_channels,
-                        out_channels=h_dim,
-                        kernel_size=3,
-                        stride=2,
-                        padding=1,
-                    ),
-                    nn.BatchNorm2d(h_dim),
-                    nn.LeakyReLU(),
-                )
-            )
-            in_channels = h_dim
-
-        self.encoder = nn.Sequential(*modules)
-        self.slot_heads = nn.ModuleList(
-            [
-                nn.Sequential(
-                    nn.Linear(hidden_dims[-1] * 4, 256),
-                    nn.ELU(),
-                    nn.Linear(256, n_slot_latents),
-                    nn.Sigmoid()
-                )
-                for _ in range(n_slots)
-            ]
-        )
+        super(SlotMLPMonotonic, self).__init__()
+        self.n_slots = n_slots
+        self.n_slot_latents = n_slot_latents
+        self.encoder = get_encoder(in_channels, n_slots * n_slot_latents)
+        self.decoder = get_decoder(n_slots * n_slot_latents, in_channels)
 
     def forward(self, x):
-        x = self.encoder(x)
-        x = torch.flatten(x, start_dim=1)
-        slot_latents = torch.stack([slot_head(x) for slot_head in self.slot_heads])
-        return slot_latents.permute(1, 0, 2)
+        latents = self.encoder(x)
+        image = self.decoder(latents)
+        latents = latents.view(-1, self.n_slots, self.n_slot_latents)
+        return image, latents
 
 
-class FlattenedSlotMLP(torch.nn.Module):
-    """FlattenedSlotMLP is based on Vanilla VAE encoder. It takes in an image and outputs a flattened latent vector
-    for all slots."""
-
+class SlotMLPAdditive(torch.nn.Module):
     def __init__(
         self,
         in_channels: int,
         n_slots: int,
         n_slot_latents: int,
-        hidden_dims: List = None,
     ) -> None:
-        super(FlattenedSlotMLP, self).__init__()
-
-        self.model_type = "latents_regressor"
-
-        modules = []
-        if hidden_dims is None:
-            hidden_dims = [32, 64, 128, 256, 512]
-
-        for h_dim in hidden_dims:
-            modules.append(
-                nn.Sequential(
-                    nn.Conv2d(
-                        in_channels,
-                        out_channels=h_dim,
-                        kernel_size=3,
-                        stride=2,
-                        padding=1,
-                    ),
-                    nn.BatchNorm2d(h_dim),
-                    nn.LeakyReLU(),
-                )
-            )
-            in_channels = h_dim
-
-        self.encoder = nn.Sequential(*modules)
-        self.latent_head = nn.Sequential(
-            nn.Linear(hidden_dims[-1] * 4, 256),
-            nn.ELU(),
-            nn.Linear(256, n_slots * n_slot_latents),
-            nn.Sigmoid()
-        )
+        super(SlotMLPAdditive, self).__init__()
+        self.n_slots = n_slots
+        self.n_slot_latents = n_slot_latents
+        self.encoder = get_encoder(in_channels, n_slots * n_slot_latents)
+        self.decoder = get_decoder(n_slot_latents, in_channels)
 
     def forward(self, x):
-        x = self.encoder(x)
-        x = torch.flatten(x, start_dim=1)
-        x = self.latent_head(x)
-        return x
+        latents = self.encoder(x)
+        latents = latents.view(-1, self.n_slots, self.n_slot_latents)
+
+        image = 0
+        for i in range(self.n_slots):
+            image += self.decoder(latents[:, i, :])
+
+        return image, latents
+
+
+class SlotMLPEncoder(torch.nn.Module):
+    def __init__(
+        self,
+        in_channels: int,
+        n_slots: int,
+        n_slot_latents: int,
+    ) -> None:
+        super(SlotMLPEncoder, self).__init__()
+        self.n_slots = n_slots
+        self.n_slot_latents = n_slot_latents
+        self.encoder = get_encoder(in_channels, n_slots * n_slot_latents)
+
+    def forward(self, x):
+        latents = self.encoder(x)
+        latents = latents.view(-1, self.n_slots, self.n_slot_latents)
+        return latents
