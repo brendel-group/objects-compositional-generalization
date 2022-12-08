@@ -53,14 +53,14 @@ def get_decoder(in_dim, out_channels):
     return decoder
 
 
-class SlotMLPMonotonic(torch.nn.Module):
+class SlotMLPMonolithic(torch.nn.Module):
     def __init__(
         self,
         in_channels: int,
         n_slots: int,
         n_slot_latents: int,
     ) -> None:
-        super(SlotMLPMonotonic, self).__init__()
+        super(SlotMLPMonolithic, self).__init__()
         self.n_slots = n_slots
         self.n_slot_latents = n_slot_latents
         self.encoder = get_encoder(in_channels, n_slots * n_slot_latents)
