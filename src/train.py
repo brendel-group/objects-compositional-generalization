@@ -31,22 +31,28 @@ def train(model, train_loader, optimizer, device, epoch=0, reduction="sum"):
         true_latents = true_latents.to(device)
         optimizer.zero_grad()
         output = model(data)
-        loss = 0
-        if len(output) == 2:
-            predicted_images, predicted_latents = output
-            loss = F.mse_loss(predicted_images, data, reduction=reduction)
-            total_reconstruction_loss += loss.item() * len(data)
+        recon_loss = 0
+        if len(output) > 1:
+            if len(output) == 2:
+                predicted_images, predicted_latents = output
+            elif len(output) == 3:
+                predicted_images, predicted_latents, figures = output
+            recon_loss = F.mse_loss(predicted_images, data, reduction=reduction)
+            total_reconstruction_loss += recon_loss.item()
         else:
             predicted_latents = output
         slots_loss, inds = matched_slots_loss(
             predicted_latents, true_latents, device, reduction=reduction
         )
-        total_slots_loss += slots_loss.item() * len(data)
+        total_slots_loss += slots_loss.item()
+        loss = recon_loss * 0.01 + slots_loss * 0.99
 
-        loss += slots_loss
         loss.backward()
-        train_loss += loss.item() * len(data)
-        r2_score += calculate_r2_score(true_latents, predicted_latents, inds) * len(data)
+        train_loss += loss.item()
+        r2_score += calculate_r2_score(true_latents, predicted_latents, inds) * len(
+            data
+        )
+
         optimizer.step()
 
     print(
@@ -56,7 +62,7 @@ def train(model, train_loader, optimizer, device, epoch=0, reduction="sum"):
             r2_score / len(train_loader.dataset),
         )
     )
-    if len(output) == 2 and epoch % 20 == 0:
+    if len(output) > 1 and epoch % 50 == 0:
         img_grid = torchvision.utils.make_grid(predicted_images.to("cpu"))
         writer.add_image(f"train/predicted", img_grid, epoch)
         img_grid = torchvision.utils.make_grid(data.to("cpu"))
@@ -67,6 +73,11 @@ def train(model, train_loader, optimizer, device, epoch=0, reduction="sum"):
             total_reconstruction_loss / len(train_loader.dataset),
             epoch,
         )
+        if len(output) == 3:
+            for i, figure in enumerate(figures):
+                img_grid = torchvision.utils.make_grid(figure.to("cpu"))
+                writer.add_image(f"figure {i}/train", img_grid, epoch)
+
     writer.add_scalar(
         "Average Slots Loss/train", total_slots_loss / len(train_loader.dataset), epoch
     )
@@ -91,21 +102,26 @@ def test(model, test_loader, device, epoch, reduction="sum", test_type="ID"):
             true_latents = true_latents.to(device)
             output = model(data)
 
-            loss = 0
-            if len(output) == 2:
-                predicted_images, predicted_latents = output
-                loss = F.mse_loss(predicted_images, data, reduction=reduction)
-                total_reconstruction_loss += loss.item() * len(data)
+            recon_loss = 0
+            if len(output) > 1:
+                if len(output) == 2:
+                    predicted_images, predicted_latents = output
+                elif len(output) == 3:
+                    predicted_images, predicted_latents, figures = output
+                recon_loss = F.mse_loss(predicted_images, data, reduction=reduction)
+                total_reconstruction_loss += recon_loss.item()
             else:
                 predicted_latents = output
             slots_loss, inds = matched_slots_loss(
                 predicted_latents, true_latents, device, reduction=reduction
             )
-            total_slots_loss += slots_loss.item() * len(data)
+            total_slots_loss += slots_loss.item()
+            loss = recon_loss * 0.2 + slots_loss
 
-            loss += slots_loss
-            r2_score += calculate_r2_score(true_latents, predicted_latents, inds) * len(data)
-            test_loss += loss.item() * len(data)
+            test_loss += loss.item()
+            r2_score += calculate_r2_score(true_latents, predicted_latents, inds) * len(
+                data
+            )
 
     print(
         "===========> {} Test set loss: {:.4f}, r2 score {:.4f}".format(
@@ -114,7 +130,7 @@ def test(model, test_loader, device, epoch, reduction="sum", test_type="ID"):
             r2_score / len(test_loader.dataset),
         ),
     )
-    if len(output) == 2:
+    if len(output) > 1:
         img_grid = torchvision.utils.make_grid(predicted_images.to("cpu"))
         writer.add_image(f"test_{test_type}/predicted", img_grid, epoch)
         img_grid = torchvision.utils.make_grid(data.to("cpu"))
@@ -125,6 +141,11 @@ def test(model, test_loader, device, epoch, reduction="sum", test_type="ID"):
             total_reconstruction_loss / len(test_loader.dataset),
             epoch,
         )
+        if len(output) == 3:
+            for i, figure in enumerate(figures):
+                img_grid = torchvision.utils.make_grid(figure.to("cpu"))
+                writer.add_image(f"figure {i}/test_{test_type}", img_grid, epoch)
+
     writer.add_scalar(
         f"Average Slots Loss/test_{test_type}",
         total_slots_loss / len(test_loader.dataset),
@@ -138,8 +159,46 @@ def test(model, test_loader, device, epoch, reduction="sum", test_type="ID"):
     )
 
 
-def run():
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+def run(
+    *,
+    model,
+    device,
+    epochs,
+    batch_size,
+    lr,
+    n_samples_train,
+    n_samples_test,
+    n_slots,
+    n_slot_latents,
+    no_overlap,
+    sample_mode_train,
+    sample_mode_test_id,
+    sample_mode_test_ood,
+    delta,
+    in_channels,
+):
+    """
+    Run the training and testing. Currently only supports SpritesWorld dataset.
+
+    Args:
+        model: Model to use. One of the models defined in models.py.
+        device: Device to use. Either "cpu" or "cuda".
+        epochs: Number of epochs to train for.
+        batch_size: Batch size to use.
+        lr: Learning rate to use.
+        n_samples_train: Number of samples in training dataset.
+        n_samples_test: Number of samples in testing dataset (ID and OOD).
+        n_slots: Number of slots, i.e. objects in scene.
+        n_slot_latents: Number of latents per slot. Right now, this is fixed to 8.
+        no_overlap: Whether to allow overlapping figures.
+        sample_mode_train: Sampling mode for training dataset.
+        sample_mode_test_id: Sampling mode for ID testing dataset.
+        sample_mode_test_ood: Sampling mode for OOD testing dataset.
+        delta: Delta for "diagonal" and "off_diagonal" dataset.
+        in_channels: Number of channels in input image.
+    """
+    if device == "cuda":
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print("Using device:", device)
 
     cfg = config.SpriteWorldConfig()
@@ -150,27 +209,17 @@ def run():
         [rng.max - rng.min for rng in cfg.get_ranges().values()]
     ).reshape(1, 1, -1)
 
-    # dataset parameters
-    in_channels = 3
-    delta = 0.125
-    n_slots = 2
-    n_slot_latents = 8
-    no_overlap = True
-    n_samples_train = 10000
-    n_samples_test = 1000
-    sample_mode_train = "diagonal"
-    sample_mode_test_id = "diagonal"
-    sample_mode_test_ood = "off_diagonal"
+    if model == "SlotMLPAdditive":
+        model = models.SlotMLPAdditive(in_channels, n_slots, n_slot_latents).to(device)
+    elif model == "SlotMLPMonolithic":
+        model = models.SlotMLPMonolithic(in_channels, n_slots, n_slot_latents).to(
+            device
+        )
+    elif model == "SlotMLPEncoder":
+        model = models.SlotMLPEncoder(in_channels, n_slots, n_slot_latents).to(device)
 
-    # training parameters
-    lr = 1e-3
-    epochs = 2000
-    batch_size = 64
-
-    model = models.SlotMLPMonolithic(in_channels, n_slots, n_slot_latents).to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
 
-    # datasets
     transform = transforms.Compose([transforms.ToTensor()])
     train_dataset = data.SpriteWorldDataset(
         n_samples_test,
