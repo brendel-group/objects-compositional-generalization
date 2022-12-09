@@ -45,7 +45,7 @@ def train(model, train_loader, optimizer, device, epoch=0, reduction="sum"):
             predicted_latents, true_latents, device, reduction=reduction
         )
         total_slots_loss += slots_loss.item()
-        loss = recon_loss * 0.01 + slots_loss * 0.99
+        loss = recon_loss * 0.05 + slots_loss * 0.95
 
         loss.backward()
         train_loss += loss.item()
@@ -116,7 +116,7 @@ def test(model, test_loader, device, epoch, reduction="sum", test_type="ID"):
                 predicted_latents, true_latents, device, reduction=reduction
             )
             total_slots_loss += slots_loss.item()
-            loss = recon_loss * 0.2 + slots_loss
+            loss = recon_loss * 0.05 + slots_loss * 0.95
 
             test_loss += loss.item()
             r2_score += calculate_r2_score(true_latents, predicted_latents, inds) * len(
