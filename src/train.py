@@ -35,18 +35,18 @@ def train(model, train_loader, optimizer, device, epoch=0, reduction="sum"):
         if len(output) == 2:
             predicted_images, predicted_latents = output
             loss = F.mse_loss(predicted_images, data, reduction=reduction)
-            total_reconstruction_loss += loss.item()
+            total_reconstruction_loss += loss.item() * len(data)
         else:
             predicted_latents = output
         slots_loss, inds = matched_slots_loss(
             predicted_latents, true_latents, device, reduction=reduction
         )
-        total_slots_loss += slots_loss.item()
+        total_slots_loss += slots_loss.item() * len(data)
 
         loss += slots_loss
         loss.backward()
-        train_loss += loss.item()
-        r2_score += calculate_r2_score(true_latents, predicted_latents, inds)
+        train_loss += loss.item() * len(data)
+        r2_score += calculate_r2_score(true_latents, predicted_latents, inds) * len(data)
         optimizer.step()
 
     print(
@@ -95,17 +95,17 @@ def test(model, test_loader, device, epoch, reduction="sum", test_type="ID"):
             if len(output) == 2:
                 predicted_images, predicted_latents = output
                 loss = F.mse_loss(predicted_images, data, reduction=reduction)
-                total_reconstruction_loss += loss.item()
+                total_reconstruction_loss += loss.item() * len(data)
             else:
                 predicted_latents = output
             slots_loss, inds = matched_slots_loss(
                 predicted_latents, true_latents, device, reduction=reduction
             )
-            total_slots_loss += slots_loss.item()
+            total_slots_loss += slots_loss.item() * len(data)
 
             loss += slots_loss
-            r2_score += calculate_r2_score(true_latents, predicted_latents, inds)
-            test_loss += loss.item()
+            r2_score += calculate_r2_score(true_latents, predicted_latents, inds) * len(data)
+            test_loss += loss.item() * len(data)
 
     print(
         "===========> {} Test set loss: {:.4f}, r2 score {:.4f}".format(
@@ -167,7 +167,7 @@ def run():
     epochs = 2000
     batch_size = 64
 
-    model = models.SlotMLPEncoder(in_channels, n_slots, n_slot_latents).to(device)
+    model = models.SlotMLPMonolithic(in_channels, n_slots, n_slot_latents).to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
 
     # datasets

@@ -48,7 +48,7 @@ class SpriteWorldDataset(torch.utils.data.TensorDataset):
 
     Args:
         n_samples: Number of samples to generate.
-        n_slots: Number of objects in scene.
+        n_slots: Number of objects in scene. For n_slots=1, always 'random' sampling is used.
         cfg: Instance of SpriteWorldConfig class, determines the range of values for each latent variable.
         sample_mode: Sampling mode for latent variables ("random", "diagonal", "off_diagonal", "pure_off_diagonal").
         img_h: Height of the generated images.
@@ -92,6 +92,9 @@ class SpriteWorldDataset(torch.utils.data.TensorDataset):
                 factors=("x", "y", "shape", "angle", "scale", "c0", "c1", "c2")
             ),
         }
+        if n_slots == 1:
+            self.sample_mode = "random"
+            print("For n_slots=1 always 'random' sampling is used.")
 
         if self.no_overlap:
             # here we decrease delta to the range where it is possible to have no overlapping figures analytically it
@@ -104,7 +107,7 @@ class SpriteWorldDataset(torch.utils.data.TensorDataset):
                 )
                 self.delta = max_delta
         self.z = sample_latents(
-            n_samples, n_slots, cfg, sample_mode, delta=self.delta, **kwargs
+            self.n_samples, self.n_slots, self.cfg, self.sample_mode, delta=self.delta, **kwargs
         )
 
         self.__generate_ind = 0
