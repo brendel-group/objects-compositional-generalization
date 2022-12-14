@@ -36,6 +36,7 @@ def one_epoch(
     accum_slots_loss = 0
     accum_reconstruction_loss = 0
     r2_score = 0
+    per_latent_r2_score = 0
     for batch_idx, (data, true_latents) in enumerate(dataloader):
         data = data.to(device)
         true_latents = true_latents.to(device)
@@ -45,7 +46,7 @@ def one_epoch(
         output = model(data)
 
         reconstruction_loss = 0
-        if len(output) > 1:
+        if type(output) == tuple:
             if len(output) == 2:
                 # if model returns only predicted images and latents (SlotMLPMonolithic)
                 predicted_images, predicted_latents = output
@@ -68,9 +69,9 @@ def one_epoch(
         total_loss = reconstruction_loss * 0.01 + slots_loss * 0.99
         accum_total_loss += total_loss.item()
 
-        r2_score += calculate_r2_score(true_latents, predicted_latents, inds) * len(
-            data
-        )
+        avg_r2, raw_r2 = calculate_r2_score(true_latents, predicted_latents, inds)
+        r2_score += avg_r2 * len(data)
+        per_latent_r2_score += raw_r2 * len(data)
 
         if mode == "train":
             total_loss.backward()
@@ -83,7 +84,7 @@ def one_epoch(
             r2_score / n_samples,
         )
     )
-    if len(output) > 1 and epoch % 10 == 0:
+    if type(output) == tuple and epoch % 10 == 0:
         show_pred_img = predicted_images[:8, ...].cpu().clamp(0, 1)
         img_grid = torchvision.utils.make_grid(show_pred_img)
         writer.add_image(f"{mode}/predicted", img_grid, epoch)
@@ -104,7 +105,8 @@ def one_epoch(
     writer.add_scalar(f"Average Slots Loss/{mode}", accum_slots_loss / n_samples, epoch)
     writer.add_scalar(f"Average Loss/{mode}", accum_total_loss / n_samples, epoch)
     writer.add_scalar(f"Average R2 Score/{mode}", r2_score / n_samples, epoch)
-
+    for i, r2 in enumerate(per_latent_r2_score / n_samples):
+        writer.add_scalar(f"Per latent R2 Score/{i}/{mode}", r2, epoch)
     return (
         accum_total_loss / n_samples,
         accum_reconstruction_loss / n_samples,
