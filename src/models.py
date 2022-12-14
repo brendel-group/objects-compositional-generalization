@@ -1,7 +1,5 @@
 import torch
 import torch.nn as nn
-import numpy as np
-from typing import List
 
 
 class View(nn.Module):
@@ -49,8 +47,10 @@ def get_decoder(in_dim, out_channels):
         nn.ELU(),
         View((-1, 32, 4, 4)),
         nn.ConvTranspose2d(32, 32, 4, 2, 1),
+        nn.Dropout2d(0.3),
         nn.ELU(),
         nn.ConvTranspose2d(32, 32, 4, 2, 1),
+        nn.Dropout2d(0.3),
         nn.ELU(),
         nn.ConvTranspose2d(32, 32, 4, 2, 1),
         nn.ELU(),
@@ -110,9 +110,9 @@ class SlotMLPAdditive(torch.nn.Module):
         image = 0
         figures = []
         for i in range(self.n_slots):
-            image += self.decoder(latents[:, i, :])
-            figures.append(self.decoder(latents[:, i, :]))
-
+            figure = self.decoder(latents[:, i, :])
+            image += figure
+            figures.append(figure)
         return image, latents, figures
 
 

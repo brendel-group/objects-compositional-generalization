@@ -1,10 +1,12 @@
+import random
+
+import numpy as np
 import torch
-import torch.utils.data
 import torch.nn.functional as F
+import torch.utils.data
+import torchvision
 import torchvision.transforms as transforms
 from torch.utils.tensorboard import SummaryWriter
-
-import torchvision
 
 from .training_utils import (
     calculate_r2_score,
@@ -19,149 +21,101 @@ from . import data
 from . import models
 
 
-def train(model, train_loader, optimizer, device, epoch=0, reduction="sum"):
-    """One epoch of training. Currently only supports MSE loss."""
-    model.train()
-    train_loss = 0
-    total_slots_loss = 0
-    total_reconstruction_loss = 0
+def one_epoch(
+    model, dataloader, optimizer, device, mode="train", epoch=0, reduction="sum"
+):
+    n_samples = len(dataloader.dataset)
+    if mode == "train":
+        model.train()
+    elif mode in ["test_ID", "test_OOD"]:
+        model.eval()
+    else:
+        raise ValueError("mode must be either train or test")
+
+    accum_total_loss = 0
+    accum_slots_loss = 0
+    accum_reconstruction_loss = 0
     r2_score = 0
-    for batch_idx, (data, true_latents) in enumerate(train_loader):
+    for batch_idx, (data, true_latents) in enumerate(dataloader):
         data = data.to(device)
         true_latents = true_latents.to(device)
-        optimizer.zero_grad()
+
+        if mode == "train":
+            optimizer.zero_grad()
         output = model(data)
-        recon_loss = 0
+
+        reconstruction_loss = 0
         if len(output) > 1:
             if len(output) == 2:
+                # if model returns only predicted images and latents (SlotMLPMonolithic)
                 predicted_images, predicted_latents = output
             elif len(output) == 3:
+                # if model returns predicted images, latents and per slots figures (SlotMLPAdditive)
                 predicted_images, predicted_latents, figures = output
-            recon_loss = F.mse_loss(predicted_images, data, reduction=reduction)
-            total_reconstruction_loss += recon_loss.item()
+            reconstruction_loss = F.mse_loss(
+                predicted_images, data, reduction=reduction
+            )
+            accum_reconstruction_loss += reconstruction_loss.item()
         else:
+            # if model returns only predicted latents (SlotMLPEncoder)
             predicted_latents = output
+
         slots_loss, inds = matched_slots_loss(
             predicted_latents, true_latents, device, reduction=reduction
         )
-        total_slots_loss += slots_loss.item()
-        loss = recon_loss * 0.05 + slots_loss * 0.95
+        accum_slots_loss += slots_loss.item()
 
-        loss.backward()
-        train_loss += loss.item()
+        total_loss = reconstruction_loss * 0.01 + slots_loss * 0.99
+        accum_total_loss += total_loss.item()
+
         r2_score += calculate_r2_score(true_latents, predicted_latents, inds) * len(
             data
         )
 
-        optimizer.step()
+        if mode == "train":
+            total_loss.backward()
+            optimizer.step()
 
     print(
         "====> Epoch: {} Average loss: {:.4f}, r2 score {:.4f}".format(
             epoch,
-            train_loss / len(train_loader.dataset),
-            r2_score / len(train_loader.dataset),
+            accum_total_loss / n_samples,
+            r2_score / n_samples,
         )
     )
-    if len(output) > 1 and epoch % 50 == 0:
-        img_grid = torchvision.utils.make_grid(predicted_images.to("cpu"))
-        writer.add_image(f"train/predicted", img_grid, epoch)
-        img_grid = torchvision.utils.make_grid(data.to("cpu"))
-        writer.add_image(f"train/target", img_grid, epoch)
+    if len(output) > 1 and epoch % 10 == 0:
+        show_pred_img = predicted_images[:8, ...].cpu().clamp(0, 1)
+        img_grid = torchvision.utils.make_grid(show_pred_img)
+        writer.add_image(f"{mode}/predicted", img_grid, epoch)
+        img_grid = torchvision.utils.make_grid(data[:8, ...].to("cpu"))
+        writer.add_image(f"{mode}/target", img_grid, epoch)
 
         writer.add_scalar(
-            "Average Reconstruction Loss/train",
-            total_reconstruction_loss / len(train_loader.dataset),
+            f"Average Reconstruction Loss/{mode}",
+            accum_reconstruction_loss / n_samples,
             epoch,
         )
         if len(output) == 3:
             for i, figure in enumerate(figures):
-                img_grid = torchvision.utils.make_grid(figure.to("cpu"))
-                writer.add_image(f"figure {i}/train", img_grid, epoch)
+                show_pred_img = figure[:8, ...].cpu().clamp(0, 1)
+                img_grid = torchvision.utils.make_grid(show_pred_img)
+                writer.add_image(f"figure {i}/{mode}", img_grid, epoch)
 
-    writer.add_scalar(
-        "Average Slots Loss/train", total_slots_loss / len(train_loader.dataset), epoch
-    )
-    writer.add_scalar(
-        "Average Loss/train", train_loss / len(train_loader.dataset), epoch
-    )
-    writer.add_scalar(
-        "Average R2 Score/train", r2_score / len(train_loader.dataset), epoch
-    )
+    writer.add_scalar(f"Average Slots Loss/{mode}", accum_slots_loss / n_samples, epoch)
+    writer.add_scalar(f"Average Loss/{mode}", accum_total_loss / n_samples, epoch)
+    writer.add_scalar(f"Average R2 Score/{mode}", r2_score / n_samples, epoch)
 
-
-def test(model, test_loader, device, epoch, reduction="sum", test_type="ID"):
-    """Test the model on test set. Currently only supports MSE loss."""
-    model.eval()
-    test_loss = 0
-    total_slots_loss = 0
-    total_reconstruction_loss = 0
-    r2_score = 0
-    with torch.no_grad():
-        for batch_idx, (data, true_latents) in enumerate(test_loader):
-            data = data.to(device)
-            true_latents = true_latents.to(device)
-            output = model(data)
-
-            recon_loss = 0
-            if len(output) > 1:
-                if len(output) == 2:
-                    predicted_images, predicted_latents = output
-                elif len(output) == 3:
-                    predicted_images, predicted_latents, figures = output
-                recon_loss = F.mse_loss(predicted_images, data, reduction=reduction)
-                total_reconstruction_loss += recon_loss.item()
-            else:
-                predicted_latents = output
-            slots_loss, inds = matched_slots_loss(
-                predicted_latents, true_latents, device, reduction=reduction
-            )
-            total_slots_loss += slots_loss.item()
-            loss = recon_loss * 0.05 + slots_loss * 0.95
-
-            test_loss += loss.item()
-            r2_score += calculate_r2_score(true_latents, predicted_latents, inds) * len(
-                data
-            )
-
-    print(
-        "===========> {} Test set loss: {:.4f}, r2 score {:.4f}".format(
-            test_type,
-            test_loss / len(test_loader.dataset),
-            r2_score / len(test_loader.dataset),
-        ),
-    )
-    if len(output) > 1:
-        img_grid = torchvision.utils.make_grid(predicted_images.to("cpu"))
-        writer.add_image(f"test_{test_type}/predicted", img_grid, epoch)
-        img_grid = torchvision.utils.make_grid(data.to("cpu"))
-        writer.add_image(f"test_{test_type}/target", img_grid, epoch)
-
-        writer.add_scalar(
-            f"Average Reconstruction Loss/test_{test_type}",
-            total_reconstruction_loss / len(test_loader.dataset),
-            epoch,
-        )
-        if len(output) == 3:
-            for i, figure in enumerate(figures):
-                img_grid = torchvision.utils.make_grid(figure.to("cpu"))
-                writer.add_image(f"figure {i}/test_{test_type}", img_grid, epoch)
-
-    writer.add_scalar(
-        f"Average Slots Loss/test_{test_type}",
-        total_slots_loss / len(test_loader.dataset),
-        epoch,
-    )
-    writer.add_scalar(
-        f"Average Loss/test_{test_type}", test_loss / len(test_loader.dataset), epoch
-    )
-    writer.add_scalar(
-        f"Average R2 Score/test_{test_type}", r2_score / len(test_loader.dataset), epoch
+    return (
+        accum_total_loss / n_samples,
+        accum_reconstruction_loss / n_samples,
+        accum_slots_loss / n_samples,
+        r2_score / n_samples,
     )
 
 
 def run(
     *,
-    model,
+    model_name,
     device,
     epochs,
     batch_size,
@@ -176,12 +130,13 @@ def run(
     sample_mode_test_ood,
     delta,
     in_channels,
+    seed,
 ):
     """
     Run the training and testing. Currently only supports SpritesWorld dataset.
 
     Args:
-        model: Model to use. One of the models defined in models.py.
+        model_name: Model to use. One of the models defined in models.py.
         device: Device to use. Either "cpu" or "cuda".
         epochs: Number of epochs to train for.
         batch_size: Batch size to use.
@@ -196,10 +151,15 @@ def run(
         sample_mode_test_ood: Sampling mode for OOD testing dataset.
         delta: Delta for "diagonal" and "off_diagonal" dataset.
         in_channels: Number of channels in input image.
+        seed: Random seed to use.
     """
     if device == "cuda":
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print("Using device:", device)
+
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
 
     cfg = config.SpriteWorldConfig()
     min_offset = torch.FloatTensor(
@@ -209,16 +169,16 @@ def run(
         [rng.max - rng.min for rng in cfg.get_ranges().values()]
     ).reshape(1, 1, -1)
 
-    if model == "SlotMLPAdditive":
+    if model_name == "SlotMLPAdditive":
         model = models.SlotMLPAdditive(in_channels, n_slots, n_slot_latents).to(device)
-    elif model == "SlotMLPMonolithic":
+    elif model_name == "SlotMLPMonolithic":
         model = models.SlotMLPMonolithic(in_channels, n_slots, n_slot_latents).to(
             device
         )
-    elif model == "SlotMLPEncoder":
+    elif model_name == "SlotMLPEncoder":
         model = models.SlotMLPEncoder(in_channels, n_slots, n_slot_latents).to(device)
 
-    optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=0.15)
 
     transform = transforms.Compose([transforms.ToTensor()])
     train_dataset = data.SpriteWorldDataset(
@@ -268,9 +228,54 @@ def run(
         shuffle=False,
         collate_fn=lambda b: collate_fn_normalizer(b, min_offset, scale),
     )
-
+    reduction = "sum"
+    min_reconstruction_loss = float("inf")
     for epoch in range(1, epochs + 1):
-        train(model, train_loader, optimizer, device, epoch)
-        if epoch % 50 == 0:
-            test(model, test_loader_id, device, epoch, test_type="ID")
-            test(model, test_loader_ood, device, epoch, test_type="OOD")
+        total_loss, reconstruction_loss, slots_loss, r2_score = one_epoch(
+            model,
+            train_loader,
+            optimizer,
+            device,
+            mode="train",
+            epoch=epoch,
+            reduction=reduction,
+        )
+        if epoch % 20 == 0:
+            (
+                id_total_loss,
+                id_reconstruction_loss,
+                id_slots_loss,
+                id_r2_score,
+            ) = one_epoch(
+                model,
+                test_loader_id,
+                optimizer,
+                device,
+                mode="test_ID",
+                epoch=epoch,
+                reduction=reduction,
+            )
+            (
+                ood_total_loss,
+                ood_reconstruction_loss,
+                ood_slots_loss,
+                ood_r2_score,
+            ) = one_epoch(
+                model,
+                test_loader_ood,
+                optimizer,
+                device,
+                mode="test_OOD",
+                epoch=epoch,
+                reduction=reduction,
+            )
+
+            if id_reconstruction_loss < min_reconstruction_loss:
+                min_reconstruction_loss = id_reconstruction_loss
+                print()
+                print("New best model!")
+                print("Epoch:", epoch)
+                print("ID reconstruction loss:", id_reconstruction_loss)
+                print()
+                torch.save(model.state_dict(), f"{model_name}_best_id_model.pt")
+    torch.save(model.state_dict(), f"{model_name}_last_train_model.pt")
