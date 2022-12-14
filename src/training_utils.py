@@ -7,23 +7,35 @@ from torchmetrics import R2Score
 
 
 def calculate_r2_score(
-    true_latents: torch.Tensor, predicted_latents: torch.Tensor, inds: torch.Tensor
+    true_latents: torch.Tensor, predicted_latents: torch.Tensor, indices: torch.Tensor
 ) -> Tuple[int, torch.Tensor]:
-    """Calculate R2 score. Slots are flattened before calculating R2 score."""
-    inds = torch.LongTensor(inds)
+    """
+    Calculate R2 score. Slots are flattened before calculating R2 score.
+
+    Args:
+        true_latents: tensor of shape (batch_size, n_slots, n_latents)
+        predicted_latents: tensor of shape (batch_size, n_slots, n_latents)
+        indices: tensor of shape (batch_size, n_slots, 2) with indices of matched slots
+
+    Returns:
+        avg_r2_score: average R2 score over all latents
+        r2_score_raw: R2 score for each latent
+    """
+    indices = torch.LongTensor(indices)
     predicted_latents = predicted_latents.detach().cpu()
     true_latents = true_latents.detach().cpu()
 
     for i in range(true_latents.shape[0]):
         # shuffling predicted latents to match true latents
-        predicted_latents[i, :] = predicted_latents[i, inds[i, :, 1], ...]
+        predicted_latents[i, :] = predicted_latents[i, indices[i, :, 1], ...]
 
     true_latents = true_latents.view(true_latents.shape[0], -1)
     predicted_latents = predicted_latents.reshape(predicted_latents.shape[0], -1)
 
     r2 = R2Score(true_latents.shape[1], multioutput="raw_values")
     r2_score_raw = r2(predicted_latents, true_latents)
-    return r2_score_raw.mean().item(), r2_score_raw
+    avg_r2_score = r2_score_raw.mean().item()
+    return avg_r2_score, r2_score_raw
 
 
 def matched_slots_loss(
