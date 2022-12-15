@@ -3,8 +3,6 @@ from collections import namedtuple
 from dataclasses import field, fields
 from typing import Dict, List
 
-import numpy as np
-
 Range = namedtuple("Range", ["min", "max"])
 
 
