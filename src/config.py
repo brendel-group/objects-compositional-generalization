@@ -3,6 +3,8 @@ from collections import namedtuple
 from dataclasses import field, fields
 from typing import Dict, List
 
+import numpy as np
+
 Range = namedtuple("Range", ["min", "max"])
 
 
@@ -91,7 +93,7 @@ class SpriteWorldConfig(Config):
         default=Range(0.09, 0.22), metadata={"rv_type": "continuous", "latent_size": 1}
     )
     angle: Range = field(
-        default=Range(0, 360), metadata={"rv_type": "continuous", "latent_size": 1}
+        default=Range(0, 0), metadata={"rv_type": "continuous", "latent_size": 1}
     )
     c0: Range = field(
         default=Range(0.1, 0.9), metadata={"rv_type": "continuous", "latent_size": 1}

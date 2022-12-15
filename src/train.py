@@ -162,6 +162,8 @@ def run(
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
+    # torch.backends.cudnn.deterministic = True
+    # torch.backends.cudnn.benchmark = False
 
     cfg = config.SpriteWorldConfig()
     min_offset = torch.FloatTensor(
@@ -170,6 +172,7 @@ def run(
     scale = torch.FloatTensor(
         [rng.max - rng.min for rng in cfg.get_ranges().values()]
     ).reshape(1, 1, -1)
+    scale[scale == 0] = 1
 
     if model_name == "SlotMLPAdditive":
         model = models.SlotMLPAdditive(in_channels, n_slots, n_slot_latents).to(device)

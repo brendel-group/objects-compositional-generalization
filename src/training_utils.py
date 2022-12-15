@@ -31,10 +31,10 @@ def calculate_r2_score(
 
     true_latents = true_latents.view(true_latents.shape[0], -1)
     predicted_latents = predicted_latents.reshape(predicted_latents.shape[0], -1)
-
     r2 = R2Score(true_latents.shape[1], multioutput="raw_values")
     r2_score_raw = r2(predicted_latents, true_latents)
-    avg_r2_score = r2_score_raw.mean().item()
+    r2_score_raw[torch.isinf(r2_score_raw)] = torch.nan
+    avg_r2_score = torch.nanmean(r2_score_raw).item()
     return avg_r2_score, r2_score_raw
 
 
