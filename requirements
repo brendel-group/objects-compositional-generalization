@@ -1,8 +1,0 @@
-torch
-dataclasses
-spriteworld
-numpy
-torchvision
-torchmetrics
-scipy
-tensorboard
