@@ -107,7 +107,12 @@ class SpriteWorldDataset(torch.utils.data.TensorDataset):
                 )
                 self.delta = max_delta
         self.z = sample_latents(
-            self.n_samples, self.n_slots, self.cfg, self.sample_mode, delta=self.delta, **kwargs
+            self.n_samples,
+            self.n_slots,
+            self.cfg,
+            self.sample_mode,
+            delta=self.delta,
+            **kwargs,
         )
 
         self.__generate_ind = 0
@@ -130,9 +135,16 @@ class SpriteWorldDataset(torch.utils.data.TensorDataset):
         ):
             self.__generate_ind = sample_ind
             ts = self.env.reset()
-            images[sample_ind] = np.array(ts.observation["image"])[
-                -1
-            ]  # last one contains all sprites in one scene
+            out = ts.observation["image"]
+
+            if type(out) == list:
+                # works for windows
+                images[sample_ind] = np.array(ts.observation["image"])[
+                    -1
+                ]  # last one contains all sprites in one scene
+            else:
+                # for some reason on linux it outputs only one image
+                images[sample_ind] = np.array(out)
 
             if self.transform is not None:
                 images[sample_ind] = self.transform(images[sample_ind])
@@ -141,7 +153,9 @@ class SpriteWorldDataset(torch.utils.data.TensorDataset):
 
         self.__generate_ind = 0
         stacked_images = (
-            torch.stack(images).to(torch.float32).reshape(-1, 3, self.img_h, self.img_w)
+            torch.stack(images)
+            .to(torch.float32)
+            .view(self.n_samples, 3, self.img_h, self.img_w)
         )
         return stacked_images
 
