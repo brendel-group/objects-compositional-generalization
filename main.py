@@ -13,6 +13,8 @@ if __name__ == "__main__":
     parser.add_argument("--epochs", type=int, default=4000)
     parser.add_argument("--batch_size", type=int, default=64)
     parser.add_argument("--lr", type=float, default=0.001)
+    parser.add_argument("--weight_decay", type=float, default=0.15)
+    parser.add_argument("--reduction", choices=["mean", "sum"], default="sum")
     parser.add_argument("--n_samples_train", type=int, default=50000)
     parser.add_argument("--n_samples_test", type=int, default=1000)
     parser.add_argument("--n_slots", type=int, default=2)

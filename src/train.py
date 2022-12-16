@@ -6,7 +6,6 @@ import torch.nn.functional as F
 import torch.utils.data
 import torchvision
 import torchvision.transforms as transforms
-from torch.utils.tensorboard import SummaryWriter
 
 from .training_utils import (
     calculate_r2_score,
@@ -14,7 +13,7 @@ from .training_utils import (
     collate_fn_normalizer,
 )
 
-writer = SummaryWriter()
+import wandb
 
 from . import config
 from . import data
@@ -24,6 +23,7 @@ from . import models
 def one_epoch(
     model, dataloader, optimizer, device, mode="train", epoch=0, reduction="sum"
 ):
+    log_dict = {}
     n_samples = len(dataloader.dataset)
     if mode == "train":
         model.train()
@@ -87,26 +87,27 @@ def one_epoch(
     if type(output) == tuple and epoch % 10 == 0:
         show_pred_img = predicted_images[:8, ...].cpu().clamp(0, 1)
         img_grid = torchvision.utils.make_grid(show_pred_img)
-        writer.add_image(f"{mode}/predicted", img_grid, epoch)
+        log_dict[f"{mode} reconstruction"] = [wandb.Image(img_grid)]
         img_grid = torchvision.utils.make_grid(data[:8, ...].to("cpu"))
-        writer.add_image(f"{mode}/target", img_grid, epoch)
+        log_dict[f"{mode} target"] = [wandb.Image(img_grid)]
 
-        writer.add_scalar(
-            f"Average Reconstruction Loss/{mode}",
-            accum_reconstruction_loss / n_samples,
-            epoch,
-        )
+        log_dict[f"{mode} reconstruction loss"] = accum_reconstruction_loss / n_samples
+
         if len(output) == 3:
             for i, figure in enumerate(figures):
                 show_pred_img = figure[:8, ...].cpu().clamp(0, 1)
                 img_grid = torchvision.utils.make_grid(show_pred_img)
-                writer.add_image(f"figure {i}/{mode}", img_grid, epoch)
+                log_dict[f"{mode} figure {i}"] = [wandb.Image(img_grid)]
 
-    writer.add_scalar(f"Average Slots Loss/{mode}", accum_slots_loss / n_samples, epoch)
-    writer.add_scalar(f"Average Loss/{mode}", accum_total_loss / n_samples, epoch)
-    writer.add_scalar(f"Average R2 Score/{mode}", r2_score / n_samples, epoch)
+    log_dict[f"{mode} total loss"] = accum_total_loss / n_samples
+    log_dict[f"{mode} slots loss"] = accum_slots_loss / n_samples
+    log_dict[f"{mode} r2 score"] = r2_score / n_samples
+    log_dict[f"epoch"] = epoch
+
     for i, r2 in enumerate(per_latent_r2_score / n_samples):
-        writer.add_scalar(f"Per latent R2 Score/{i}/{mode}", r2, epoch)
+        log_dict[f"{mode} latent {i} r2 score"] = r2
+
+    wandb.log(log_dict)
     return (
         accum_total_loss / n_samples,
         accum_reconstruction_loss / n_samples,
@@ -122,6 +123,8 @@ def run(
     epochs,
     batch_size,
     lr,
+    weight_decay,
+    reduction,
     n_samples_train,
     n_samples_test,
     n_slots,
@@ -143,6 +146,8 @@ def run(
         epochs: Number of epochs to train for.
         batch_size: Batch size to use.
         lr: Learning rate to use.
+        weight_decay: Weight decay to use.
+        reduction: Reduction to use for loss. Either "sum" or "mean".
         n_samples_train: Number of samples in training dataset.
         n_samples_test: Number of samples in testing dataset (ID and OOD).
         n_slots: Number of slots, i.e. objects in scene.
@@ -155,6 +160,28 @@ def run(
         in_channels: Number of channels in input image.
         seed: Random seed to use.
     """
+    wandb_config = {
+        "model_name": model_name,
+        "device": device,
+        "epochs": epochs,
+        "batch_size": batch_size,
+        "lr": lr,
+        "weight_decay": weight_decay,
+        "reduction": reduction,
+        "n_samples_train": n_samples_train,
+        "n_samples_test": n_samples_test,
+        "n_slots": n_slots,
+        "n_slot_latents": n_slot_latents,
+        "no_overlap": no_overlap,
+        "sample_mode_train": sample_mode_train,
+        "sample_mode_test_id": sample_mode_test_id,
+        "sample_mode_test_ood": sample_mode_test_ood,
+        "delta": delta,
+        "in_channels": in_channels,
+        "seed": seed,
+    }
+    wandb.init(config=wandb_config, project="object_centric_ood")
+
     if device == "cuda":
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print("Using device:", device)
@@ -183,7 +210,7 @@ def run(
     elif model_name == "SlotMLPEncoder":
         model = models.SlotMLPEncoder(in_channels, n_slots, n_slot_latents).to(device)
 
-    optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=0.15)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
 
     transform = transforms.Compose([transforms.ToTensor()])
     train_dataset = data.SpriteWorldDataset(
@@ -233,7 +260,7 @@ def run(
         shuffle=False,
         collate_fn=lambda b: collate_fn_normalizer(b, min_offset, scale),
     )
-    reduction = "sum"
+
     min_reconstruction_loss = float("inf")
     for epoch in range(1, epochs + 1):
         total_loss, reconstruction_loss, slots_loss, r2_score = one_epoch(
