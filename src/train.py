@@ -21,7 +21,14 @@ from . import models
 
 
 def one_epoch(
-    model, dataloader, optimizer, device, mode="train", epoch=0, reduction="sum"
+    model,
+    dataloader,
+    optimizer,
+    device,
+    mode="train",
+    epoch=0,
+    reduction="sum",
+    freq=100,
 ):
     log_dict = {}
     n_samples = len(dataloader.dataset)
@@ -43,35 +50,42 @@ def one_epoch(
 
         if mode == "train":
             optimizer.zero_grad()
-        output = model(data)
+
+        if model.model_name == "SlotMLPAdditiveDecoder":
+            output = model(true_latents)
+        else:
+            output = model(data)
 
         reconstruction_loss = 0
-        if type(output) == tuple:
-            if len(output) == 2:
-                # if model returns only predicted images and latents (SlotMLPMonolithic)
-                predicted_images, predicted_latents = output
-            elif len(output) == 3:
-                # if model returns predicted images, latents and per slots figures (SlotMLPAdditive)
-                predicted_images, predicted_latents, figures = output
+        slots_loss = 0
+
+        if model.model_name == "SlotMLPMonolithic":
+            predicted_images, predicted_latents = output
+        elif model.model_name == "SlotMLPAdditive":
+            predicted_images, predicted_latents, figures = output
+        elif model.model_name == "SlotMLPEncoder":
+            predicted_latents = output
+        elif model.model_name == "SlotMLPAdditiveDecoder":
+            predicted_images, figures = output
+
+        if model.model_name != "SlotMLPAdditiveDecoder":
+            slots_loss, inds = matched_slots_loss(
+                predicted_latents, true_latents, device, reduction=reduction
+            )
+            accum_slots_loss += slots_loss.item()
+
+            avg_r2, raw_r2 = calculate_r2_score(true_latents, predicted_latents, inds)
+            r2_score += avg_r2 * len(data)
+            per_latent_r2_score += raw_r2 * len(data)
+
+        if model.model_name != "SlotMLPEncoder":
             reconstruction_loss = F.mse_loss(
                 predicted_images, data, reduction=reduction
             )
             accum_reconstruction_loss += reconstruction_loss.item()
-        else:
-            # if model returns only predicted latents (SlotMLPEncoder)
-            predicted_latents = output
-
-        slots_loss, inds = matched_slots_loss(
-            predicted_latents, true_latents, device, reduction=reduction
-        )
-        accum_slots_loss += slots_loss.item()
 
         total_loss = reconstruction_loss * 0.01 + slots_loss * 0.99
         accum_total_loss += total_loss.item()
-
-        avg_r2, raw_r2 = calculate_r2_score(true_latents, predicted_latents, inds)
-        r2_score += avg_r2 * len(data)
-        per_latent_r2_score += raw_r2 * len(data)
 
         if mode == "train":
             total_loss.backward()
@@ -84,30 +98,36 @@ def one_epoch(
             r2_score / n_samples,
         )
     )
-    if type(output) == tuple and epoch % 10 == 0:
-        show_pred_img = predicted_images[:8, ...].cpu().clamp(0, 1)
-        img_grid = torchvision.utils.make_grid(show_pred_img)
-        log_dict[f"{mode} reconstruction"] = [wandb.Image(img_grid)]
-        img_grid = torchvision.utils.make_grid(data[:8, ...].to("cpu"))
-        log_dict[f"{mode} target"] = [wandb.Image(img_grid)]
+    if epoch % freq == 0:
+        if model.model_name != "SlotMLPEncoder":
+            # for models that outputs images
+            show_pred_img = predicted_images[:8, ...].cpu().clamp(0, 1)
+            img_grid = torchvision.utils.make_grid(show_pred_img)
+            log_dict[f"{mode} reconstruction"] = [wandb.Image(img_grid)]
+            img_grid = torchvision.utils.make_grid(data[:8, ...].to("cpu"))
+            log_dict[f"{mode} target"] = [wandb.Image(img_grid)]
 
-        log_dict[f"{mode} reconstruction loss"] = accum_reconstruction_loss / n_samples
+            log_dict[f"{mode} reconstruction loss"] = (
+                accum_reconstruction_loss / n_samples
+            )
 
-        if len(output) == 3:
+        if model.model_name in ["SlotMLPAdditiveDecoder", "SlotMLPAdditive"]:
+            # for models that outputs separate figures
             for i, figure in enumerate(figures):
                 show_pred_img = figure[:8, ...].cpu().clamp(0, 1)
                 img_grid = torchvision.utils.make_grid(show_pred_img)
                 log_dict[f"{mode} figure {i}"] = [wandb.Image(img_grid)]
 
-    log_dict[f"{mode} total loss"] = accum_total_loss / n_samples
-    log_dict[f"{mode} slots loss"] = accum_slots_loss / n_samples
-    log_dict[f"{mode} r2 score"] = r2_score / n_samples
-    log_dict[f"epoch"] = epoch
+        if model.model_name != "SlotMLPAdditiveDecoder":
+            # for models that predicts latents
+            for i, latent_r2 in enumerate(per_latent_r2_score):
+                log_dict[f"{mode} latent {i} r2 score"] = latent_r2 / n_samples
 
-    for i, r2 in enumerate(per_latent_r2_score / n_samples):
-        log_dict[f"{mode} latent {i} r2 score"] = r2
+        log_dict[f"{mode} total loss"] = accum_total_loss / n_samples
+        log_dict[f"{mode} slots loss"] = accum_slots_loss / n_samples
+        log_dict[f"{mode} r2 score"] = r2_score / n_samples
+        wandb.log(log_dict, step=epoch)
 
-    wandb.log(log_dict)
     return (
         accum_total_loss / n_samples,
         accum_reconstruction_loss / n_samples,
@@ -209,7 +229,11 @@ def run(
         )
     elif model_name == "SlotMLPEncoder":
         model = models.SlotMLPEncoder(in_channels, n_slots, n_slot_latents).to(device)
-
+    elif model_name == "SlotMLPAdditiveDecoder":
+        model = models.SlotMLPAdditiveDecoder(in_channels, n_slots, n_slot_latents).to(
+            device
+        )
+    wandb.watch(model)
     optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
 
     transform = transforms.Compose([transforms.ToTensor()])
@@ -261,7 +285,8 @@ def run(
         collate_fn=lambda b: collate_fn_normalizer(b, min_offset, scale),
     )
 
-    min_reconstruction_loss = float("inf")
+    min_reconstruction_loss_ID = float("inf")
+    min_reconstruction_loss_OOD = float("inf")
     for epoch in range(1, epochs + 1):
         total_loss, reconstruction_loss, slots_loss, r2_score = one_epoch(
             model,
@@ -302,12 +327,22 @@ def run(
                 reduction=reduction,
             )
 
-            if id_reconstruction_loss < min_reconstruction_loss:
-                min_reconstruction_loss = id_reconstruction_loss
+            if id_reconstruction_loss < min_reconstruction_loss_ID:
+                min_reconstruction_loss_ID = id_reconstruction_loss
                 print()
-                print("New best model!")
+                print("New best ID model!")
                 print("Epoch:", epoch)
                 print("ID reconstruction loss:", id_reconstruction_loss)
                 print()
                 torch.save(model.state_dict(), f"{model_name}_best_id_model.pt")
+
+            if ood_reconstruction_loss < min_reconstruction_loss_OOD:
+                min_reconstruction_loss_OOD = ood_reconstruction_loss
+                print()
+                print("New best OOD model!")
+                print("Epoch:", epoch)
+                print("OOD reconstruction loss:", ood_reconstruction_loss)
+                print()
+                torch.save(model.state_dict(), f"{model_name}_best_ood_model.pt")
+
     torch.save(model.state_dict(), f"{model_name}_last_train_model.pt")

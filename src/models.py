@@ -76,6 +76,7 @@ class SlotMLPMonolithic(torch.nn.Module):
         self.n_slot_latents = n_slot_latents
         self.encoder = get_encoder(in_channels, n_slots * n_slot_latents)
         self.decoder = get_decoder(n_slots * n_slot_latents, in_channels)
+        self.model_name = "SlotMLPMonolithic"
 
     def forward(self, x):
         latents = self.encoder(x)
@@ -102,6 +103,7 @@ class SlotMLPAdditive(torch.nn.Module):
         self.n_slot_latents = n_slot_latents
         self.encoder = get_encoder(in_channels, n_slots * n_slot_latents)
         self.decoder = get_decoder(n_slot_latents, in_channels)
+        self.model_name = "SlotMLPAdditive"
 
     def forward(self, x):
         latents = self.encoder(x)
@@ -132,8 +134,40 @@ class SlotMLPEncoder(torch.nn.Module):
         self.n_slots = n_slots
         self.n_slot_latents = n_slot_latents
         self.encoder = get_encoder(in_channels, n_slots * n_slot_latents)
+        self.model_name = "SlotMLPEncoder"
 
     def forward(self, x):
         latents = self.encoder(x)
         latents = latents.view(-1, self.n_slots, self.n_slot_latents)
         return latents
+
+
+class SlotMLPAdditiveDecoder(torch.nn.Module):
+    """
+    Model generates x_hat = sum_{i=1}^{n_slots} f(z_i),
+    by summing the output of each slot.  Model outputs x_hat and list of x_hat_i.
+    """
+
+    def __init__(
+        self,
+        in_channels: int,
+        n_slots: int,
+        n_slot_latents: int,
+    ) -> None:
+        super(SlotMLPAdditiveDecoder, self).__init__()
+        self.n_slots = n_slots
+        self.n_slot_latents = n_slot_latents
+        self.decoder = get_decoder(n_slot_latents, in_channels)
+        self.model_name = "SlotMLPAdditiveDecoder"
+
+    def forward(self, latents):
+        assert latents.shape[1] == self.n_slots
+        assert latents.shape[2] == self.n_slot_latents
+
+        image = 0
+        figures = []
+        for i in range(self.n_slots):
+            figure = self.decoder(latents[:, i, :])
+            image += figure
+            figures.append(figure)
+        return image, figures

@@ -7,10 +7,10 @@ if __name__ == "__main__":
     parser.add_argument("--device", choices=["cuda", "cpu"], default="cuda")
     parser.add_argument(
         "--model_name",
-        choices=["SlotMLPAdditive", "SlotMLPEncoder", "SlotMLPMonolithic"],
-        default="SlotMLPAdditive",
+        choices=["SlotMLPAdditive", "SlotMLPEncoder", "SlotMLPMonolithic", "SlotMLPAdditiveDecoder"],
+        default="SlotMLPEncoder",
     )
-    parser.add_argument("--epochs", type=int, default=4000)
+    parser.add_argument("--epochs", type=int, default=5000)
     parser.add_argument("--batch_size", type=int, default=64)
     parser.add_argument("--lr", type=float, default=0.001)
     parser.add_argument("--weight_decay", type=float, default=0.15)
