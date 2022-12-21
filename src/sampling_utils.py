@@ -23,26 +23,24 @@ def sample_random(
     latents_metadata = cfg.get_latents_metadata()
     i = 0
     for latent in latents_metadata:
-        l_type, l_size = latents_metadata[latent]
+        l_type = latents_metadata[latent]
         if l_type == "continuous":
             z = cfg[latent].min + (cfg[latent].max - cfg[latent].min) * torch.rand(
-                n_samples, n_slots, l_size
+                n_samples, n_slots, 1
             )
         elif l_type == "discrete":
-            z = torch.randint(
-                cfg[latent].min, cfg[latent].max, (n_samples, n_slots, l_size)
-            )
+            z = torch.randint(cfg[latent].min, cfg[latent].max, (n_samples, n_slots, 1))
         elif l_type == "categorical":
             z = np.random.choice(
                 [i for i, category in enumerate(cfg[latent])],
-                size=(n_samples, n_slots, l_size),
+                size=(n_samples, n_slots, 1),
             )
             z = torch.from_numpy(z)
         else:
             raise ValueError(f"Latent type {l_type} not supported.")
 
-        z_out[:, :, i : i + l_size] = z
-        i += l_size
+        z_out[:, :, i : i + 1] = z
+        i += 1
     return z_out
 
 
@@ -50,6 +48,8 @@ def sample_delta_pure_off_diagonal_cube(
     n_samples: int, n_slots: int, n_latents: int, delta: float, oversampling: int = 100
 ) -> torch.Tensor:
     """
+    WARNING: Thaddaeus said that this method is redundant, thus this function is not properly tested.
+
     Sample points where NO component lies within a n_slots-cube with side length delta from the diagonal.
 
     Function took from by Thaddaeus Wiedemer's code with almost no changes.
@@ -141,7 +141,10 @@ def sample_delta_diagonal_cube(
         # final step
         final = z_sampled + (
             ort_vec
-            * torch.pow(torch.rand([_n, 1, n_latents]), 1 / (n_slots - 1))
+            * torch.pow(
+                torch.rand([_n, 1, n_latents]), 1 / (n_slots - 1)
+            )  # why n - 1 here? because we sample
+            # "radius" not in the original space, but in the embedded
             * delta
         )
 
@@ -194,22 +197,22 @@ def sample_diagonal(
 
     i = 0
     for latent in latents_metadata:
-        l_type, l_size = latents_metadata[latent]
+        l_type = latents_metadata[latent]
         if l_type == "continuous":
-            z_out[:, :, i : i + l_size] = (
+            z_out[:, :, i : i + 1] = (
                 cfg[latent].min
-                + (cfg[latent].max - cfg[latent].min) * z_out[:, :, i : i + l_size]
+                + (cfg[latent].max - cfg[latent].min) * z_out[:, :, i : i + 1]
             )
         elif l_type == "discrete":
-            z_out[:, :, i : i + l_size] = torch.round(
+            z_out[:, :, i : i + 1] = torch.round(
                 cfg[latent].min
-                + (cfg[latent].max - cfg[latent].min) * z_out[:, :, i : i + l_size]
+                + (cfg[latent].max - cfg[latent].min) * z_out[:, :, i : i + 1]
             )
         elif l_type == "categorical":
-            z_out[:, :, i : i + l_size] = torch.floor(
-                len(cfg[latent]) * z_out[:, :, i : i + l_size]
+            z_out[:, :, i : i + 1] = torch.floor(
+                len(cfg[latent]) * z_out[:, :, i : i + 1]
             )
         else:
             raise ValueError(f"Latent type {l_type} not supported.")
-        i += l_size
+        i += 1
     return z_out

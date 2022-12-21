@@ -96,7 +96,7 @@ class SpriteWorldDataset(torch.utils.data.TensorDataset):
             self.sample_mode = "random"
             print("For n_slots=1 always 'random' sampling is used.")
 
-        if self.no_overlap:
+        if self.no_overlap and self.sample_mode in ["diagonal", "off_diagonal"]:
             # here we decrease delta to the range where it is possible to have no overlapping figures analytically it
             # is enough to have max_delta = (1 / (n_slots)) * 0.5 to have not intersecting x-coordinates,
             # but we decrease it a bit more due to the fact that figures also have some width
@@ -176,6 +176,7 @@ class SpriteWorldDataset(torch.utils.data.TensorDataset):
                     x_diag, x_diag
                 )
                 ort_vec = ort_vec / torch.norm(ort_vec, keepdim=True)
+                # why n - 1 here? because we sample "radius" not in the original space, but in the embedded
                 ort_vec *= torch.pow(torch.rand(1), 1 / (self.n_slots - 1)) * self.delta
                 x_diag += ort_vec
 
@@ -258,10 +259,8 @@ class SpriteWorldDataset(torch.utils.data.TensorDataset):
                     sprite_sample["shape"] = self.cfg.shape[
                         int(sample[slot_ind, i].item())
                     ]
-                    i += 1
                 else:
-                    l_type, l_size = latents_metadata[latent]
-                    sprite_sample[latent] = sample[slot_ind, i : i + l_size]
-                    i += l_size
+                    sprite_sample[latent] = sample[slot_ind, i : i + 1]
+                i += 1
             sampled_sprites[slot_ind] = sprite.Sprite(**sprite_sample)
         return sampled_sprites

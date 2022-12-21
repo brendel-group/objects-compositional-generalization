@@ -1,14 +1,20 @@
-from src import train
-
 import argparse
+
+from src import train
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--device", choices=["cuda", "cpu"], default="cuda")
     parser.add_argument(
         "--model_name",
-        choices=["SlotMLPAdditive", "SlotMLPEncoder", "SlotMLPMonolithic", "SlotMLPAdditiveDecoder"],
-        default="SlotMLPEncoder",
+        choices=[
+            "SlotMLPAdditive",
+            "SlotMLPEncoder",
+            "SlotMLPMonolithic",
+            "SlotMLPAdditiveDecoder",
+            "SlotMLPMonolithicDecoder",
+        ],
+        default="SlotMLPMonolithic",
     )
     parser.add_argument("--epochs", type=int, default=5000)
     parser.add_argument("--batch_size", type=int, default=64)

@@ -6,18 +6,16 @@ import torch.nn.functional as F
 import torch.utils.data
 import torchvision
 import torchvision.transforms as transforms
-
-from .training_utils import (
-    calculate_r2_score,
-    matched_slots_loss,
-    collate_fn_normalizer,
-)
-
 import wandb
 
 from . import config
 from . import data
 from . import models
+from .training_utils import (
+    calculate_r2_score,
+    matched_slots_loss,
+    collate_fn_normalizer,
+)
 
 
 def one_epoch(
@@ -51,7 +49,7 @@ def one_epoch(
         if mode == "train":
             optimizer.zero_grad()
 
-        if model.model_name == "SlotMLPAdditiveDecoder":
+        if model.model_name in ["SlotMLPAdditiveDecoder", "SlotMLPMonolithicDecoder"]:
             output = model(true_latents)
         else:
             output = model(data)
@@ -67,8 +65,13 @@ def one_epoch(
             predicted_latents = output
         elif model.model_name == "SlotMLPAdditiveDecoder":
             predicted_images, figures = output
+        elif model.model_name == "SlotMLPMonolithicDecoder":
+            predicted_images = output
 
-        if model.model_name != "SlotMLPAdditiveDecoder":
+        if model.model_name not in [
+            "SlotMLPAdditiveDecoder",
+            "SlotMLPMonolithicDecoder",
+        ]:
             slots_loss, inds = matched_slots_loss(
                 predicted_latents, true_latents, device, reduction=reduction
             )
@@ -118,7 +121,10 @@ def one_epoch(
                 img_grid = torchvision.utils.make_grid(show_pred_img)
                 log_dict[f"{mode} figure {i}"] = [wandb.Image(img_grid)]
 
-        if model.model_name != "SlotMLPAdditiveDecoder":
+        if model.model_name not in [
+            "SlotMLPAdditiveDecoder",
+            "SlotMLPMonolithicDecoder",
+        ]:
             # for models that predicts latents
             for i, latent_r2 in enumerate(per_latent_r2_score):
                 log_dict[f"{mode} latent {i} r2 score"] = latent_r2 / n_samples
@@ -233,6 +239,10 @@ def run(
         model = models.SlotMLPAdditiveDecoder(in_channels, n_slots, n_slot_latents).to(
             device
         )
+    elif model_name == "SlotMLPMonolithicDecoder":
+        model = models.SlotMLPMonolithicDecoder(
+            in_channels, n_slots, n_slot_latents
+        ).to(device)
     wandb.watch(model)
     optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
 

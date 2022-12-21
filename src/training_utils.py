@@ -25,12 +25,13 @@ def calculate_r2_score(
     predicted_latents = predicted_latents.detach().cpu()
     true_latents = true_latents.detach().cpu()
 
-    for i in range(true_latents.shape[0]):
-        # shuffling predicted latents to match true latents
-        predicted_latents[i, :] = predicted_latents[i, indices[i, :, 1], ...]
-
-    true_latents = true_latents.view(true_latents.shape[0], -1)
-    predicted_latents = predicted_latents.reshape(predicted_latents.shape[0], -1)
+    # shuffling predicted latents to match true latents
+    predicted_latents = predicted_latents.gather(
+        1,
+        indices[:, :, 1].unsqueeze(-1).expand(-1, -1, true_latents.shape[-1]),
+    )
+    true_latents = true_latents.flatten(start_dim=1)
+    predicted_latents = predicted_latents.flatten(start_dim=1)
     r2 = R2Score(true_latents.shape[1], multioutput="raw_values")
     r2_score_raw = r2(predicted_latents, true_latents)
     r2_score_raw[torch.isinf(r2_score_raw)] = torch.nan

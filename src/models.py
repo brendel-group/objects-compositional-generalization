@@ -161,9 +161,7 @@ class SlotMLPAdditiveDecoder(torch.nn.Module):
         self.model_name = "SlotMLPAdditiveDecoder"
 
     def forward(self, latents):
-        assert latents.shape[1] == self.n_slots
-        assert latents.shape[2] == self.n_slot_latents
-
+        latents = latents.view(-1, self.n_slots, self.n_slot_latents)
         image = 0
         figures = []
         for i in range(self.n_slots):
@@ -171,3 +169,25 @@ class SlotMLPAdditiveDecoder(torch.nn.Module):
             image += figure
             figures.append(figure)
         return image, figures
+
+
+class SlotMLPMonolithicDecoder(torch.nn.Module):
+    """
+    Models generates x_hat = f(z). Model outputs x_hat.
+    """
+
+    def __init__(
+        self,
+        in_channels: int,
+        n_slots: int,
+        n_slot_latents: int,
+    ) -> None:
+        super(SlotMLPMonolithicDecoder, self).__init__()
+        self.n_slots = n_slots
+        self.n_slot_latents = n_slot_latents
+        self.decoder = get_decoder(n_slots * n_slot_latents, in_channels)
+        self.model_name = "SlotMLPMonolithicDecoder"
+
+    def forward(self, latents):
+        image = self.decoder(latents.view(-1, self.n_slots * self.n_slot_latents))
+        return image

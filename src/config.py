@@ -28,19 +28,15 @@ class Config:
     def get_total_latent_dim(self) -> int:
         count = 0
         for config_field in fields(self):
-            if config_field.metadata.get("latent_size"):
-                count += 1 * config_field.metadata.get("latent_size")
+            if config_field.metadata.get("rv_type"):
+                count += 1
         return count
 
     def get_latents_metadata(self) -> Dict[str, str]:
         return {
-            config_field.name: (
-                config_field.metadata.get("rv_type"),
-                config_field.metadata.get("latent_size"),
-            )
+            config_field.name: config_field.metadata.get("rv_type")
             for config_field in fields(self)
             if config_field.metadata.get("rv_type")
-            and config_field.metadata.get("latent_size")
         }
 
     def get_ranges(self) -> Dict[str, Range]:
@@ -63,12 +59,8 @@ class SpriteWorldConfig(Config):
     Config class for SpriteWorld dataset.
     """
 
-    x: Range = field(
-        default=Range(0.1, 0.9), metadata={"rv_type": "continuous", "latent_size": 1}
-    )
-    y: Range = field(
-        default=Range(0.2, 0.8), metadata={"rv_type": "continuous", "latent_size": 1}
-    )
+    x: Range = field(default=Range(0.1, 0.9), metadata={"rv_type": "continuous"})
+    y: Range = field(default=Range(0.2, 0.8), metadata={"rv_type": "continuous"})
     shape: List[str] = field(
         default_factory=lambda: [
             "triangle",
@@ -85,20 +77,10 @@ class SpriteWorldConfig(Config):
             # "spoke_5",
             # "spoke_6",
         ],
-        metadata={"rv_type": "categorical", "latent_size": 1},
+        metadata={"rv_type": "categorical"},
     )
-    scale: Range = field(
-        default=Range(0.09, 0.22), metadata={"rv_type": "continuous", "latent_size": 1}
-    )
-    angle: Range = field(
-        default=Range(0, 0), metadata={"rv_type": "continuous", "latent_size": 1}
-    )
-    c0: Range = field(
-        default=Range(0.1, 0.9), metadata={"rv_type": "continuous", "latent_size": 1}
-    )
-    c1: Range = field(
-        default=Range(0.1, 0.9), metadata={"rv_type": "continuous", "latent_size": 1}
-    )
-    c2: Range = field(
-        default=Range(0.1, 0.9), metadata={"rv_type": "continuous", "latent_size": 1}
-    )
+    scale: Range = field(default=Range(0.09, 0.22), metadata={"rv_type": "continuous"})
+    angle: Range = field(default=Range(0, 0), metadata={"rv_type": "continuous"})
+    c0: Range = field(default=Range(0.1, 0.9), metadata={"rv_type": "continuous"})
+    c1: Range = field(default=Range(0.1, 0.9), metadata={"rv_type": "continuous"})
+    c2: Range = field(default=Range(0.1, 0.9), metadata={"rv_type": "continuous"})
