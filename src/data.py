@@ -260,7 +260,7 @@ class SpriteWorldDataset(torch.utils.data.TensorDataset):
                         int(sample[slot_ind, i].item())
                     ]
                 else:
-                    sprite_sample[latent] = sample[slot_ind, i : i + 1]
+                    sprite_sample[latent] = sample[slot_ind, i]
                 i += 1
             sampled_sprites[slot_ind] = sprite.Sprite(**sprite_sample)
         return sampled_sprites

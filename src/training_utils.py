@@ -90,3 +90,22 @@ def collate_fn_normalizer(batch, bias=0, scale=1):
     latents = torch.stack(latents)
     latents = (latents - bias) / scale
     return torch.stack(images), latents
+
+
+def sample_z_from_gt(true_latents):
+    """Sample z from ground truth latents."""
+    flattened_latents = true_latents.detach().cpu().view(-1, true_latents.shape[-1])
+    sampled_z = torch.stack(
+        [
+            flattened_latents[
+                np.random.choice(
+                    len(flattened_latents),
+                    size=len(true_latents),
+                ),
+                :,
+            ]
+            for _ in range(true_latents.shape[1])
+        ],
+        dim=1,
+    )
+    return sampled_z.to(true_latents.device)

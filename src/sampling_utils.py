@@ -39,7 +39,7 @@ def sample_random(
         else:
             raise ValueError(f"Latent type {l_type} not supported.")
 
-        z_out[:, :, i : i + 1] = z
+        z_out[:, :, i] = z
         i += 1
     return z_out
 
@@ -199,18 +199,18 @@ def sample_diagonal(
     for latent in latents_metadata:
         l_type = latents_metadata[latent]
         if l_type == "continuous":
-            z_out[:, :, i : i + 1] = (
+            z_out[:, :, i] = (
                 cfg[latent].min
-                + (cfg[latent].max - cfg[latent].min) * z_out[:, :, i : i + 1]
+                + (cfg[latent].max - cfg[latent].min) * z_out[:, :, i]
             )
         elif l_type == "discrete":
-            z_out[:, :, i : i + 1] = torch.round(
+            z_out[:, :, i] = torch.round(
                 cfg[latent].min
-                + (cfg[latent].max - cfg[latent].min) * z_out[:, :, i : i + 1]
+                + (cfg[latent].max - cfg[latent].min) * z_out[:, :, i]
             )
         elif l_type == "categorical":
-            z_out[:, :, i : i + 1] = torch.floor(
-                len(cfg[latent]) * z_out[:, :, i : i + 1]
+            z_out[:, :, i] = torch.floor(
+                len(cfg[latent]) * z_out[:, :, i]
             )
         else:
             raise ValueError(f"Latent type {l_type} not supported.")

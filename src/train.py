@@ -4,18 +4,20 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 import torch.utils.data
-import torchvision
 import torchvision.transforms as transforms
 import wandb
 
 from . import config
 from . import data
-from . import models
+from .models import base_models
 from .training_utils import (
+    sample_z_from_gt,
     calculate_r2_score,
     matched_slots_loss,
     collate_fn_normalizer,
 )
+
+from .wandb_utils import wandb_log
 
 
 def one_epoch(
@@ -26,9 +28,9 @@ def one_epoch(
     mode="train",
     epoch=0,
     reduction="sum",
-    freq=100,
+    use_sampled_loss=True,
+    freq=10,
 ):
-    log_dict = {}
     n_samples = len(dataloader.dataset)
     if mode == "train":
         model.train()
@@ -39,34 +41,59 @@ def one_epoch(
 
     accum_total_loss = 0
     accum_slots_loss = 0
+    accum_sampled_loss = 0
     accum_reconstruction_loss = 0
     r2_score = 0
     per_latent_r2_score = 0
     for batch_idx, (data, true_latents) in enumerate(dataloader):
+        reconstruction_loss = 0
+        slots_loss = 0
+        sampled_loss = 0
+        predicted_figures = None
+        predicted_images = None
+        sampled_images = None
+        sampled_figures = None
+
         data = data.to(device)
         true_latents = true_latents.to(device)
 
         if mode == "train":
             optimizer.zero_grad()
 
-        if model.model_name in ["SlotMLPAdditiveDecoder", "SlotMLPMonolithicDecoder"]:
-            output = model(true_latents)
-        else:
-            output = model(data)
-
-        reconstruction_loss = 0
-        slots_loss = 0
-
         if model.model_name == "SlotMLPMonolithic":
-            predicted_images, predicted_latents = output
+            predicted_images, predicted_latents = model(data)
         elif model.model_name == "SlotMLPAdditive":
-            predicted_images, predicted_latents, figures = output
+            if mode == "train" and use_sampled_loss:
+                # sampled_z = torch.rand(true_latents.shape).to(device)
+                sampled_z = torch.stack(
+                    [
+                        true_latents[np.random.permutation(true_latents.shape[0]), i, :]
+                        for i in range(true_latents.shape[1])
+                    ][::-1],
+                    dim=1,
+                )
+                # sampled_z = sample_z_from_gt(true_latents)
+                (
+                    predicted_images,
+                    predicted_latents,
+                    predicted_figures,
+                    z_hat,
+                    sampled_images,
+                    sampled_figures,
+                ) = model(
+                    data,
+                    sampled_z,
+                    true_latents,
+                    teacher_forcing=1,
+                )
+            else:
+                predicted_images, predicted_latents, predicted_figures = model(data)
         elif model.model_name == "SlotMLPEncoder":
-            predicted_latents = output
+            predicted_latents = model(data)
         elif model.model_name == "SlotMLPAdditiveDecoder":
-            predicted_images, figures = output
+            predicted_images, predicted_figures = model(true_latents)
         elif model.model_name == "SlotMLPMonolithicDecoder":
-            predicted_images = output
+            predicted_images = model(true_latents)
 
         if model.model_name not in [
             "SlotMLPAdditiveDecoder",
@@ -75,20 +102,31 @@ def one_epoch(
             slots_loss, inds = matched_slots_loss(
                 predicted_latents, true_latents, device, reduction=reduction
             )
-            accum_slots_loss += slots_loss.item()
+            accum_slots_loss += slots_loss.item() / n_samples
 
             avg_r2, raw_r2 = calculate_r2_score(true_latents, predicted_latents, inds)
-            r2_score += avg_r2 * len(data)
-            per_latent_r2_score += raw_r2 * len(data)
+            r2_score += avg_r2 * len(data) / n_samples
+            per_latent_r2_score += raw_r2 * len(data) / n_samples
 
         if model.model_name != "SlotMLPEncoder":
             reconstruction_loss = F.mse_loss(
                 predicted_images, data, reduction=reduction
             )
-            accum_reconstruction_loss += reconstruction_loss.item()
+            accum_reconstruction_loss += reconstruction_loss.item() / n_samples
 
-        total_loss = reconstruction_loss * 0.01 + slots_loss * 0.99
-        accum_total_loss += total_loss.item()
+        if (
+            model.model_name in ["SlotMLPAdditive"]
+            and mode == "train"
+            and use_sampled_loss
+        ):
+            sampled_loss, _ = matched_slots_loss(
+                z_hat, sampled_z, device, reduction=reduction
+            )
+            accum_sampled_loss += sampled_loss.item() / n_samples
+
+        total_loss = reconstruction_loss + slots_loss + sampled_loss
+
+        accum_total_loss += total_loss.item() / n_samples
 
         if mode == "train":
             total_loss.backward()
@@ -97,42 +135,27 @@ def one_epoch(
     print(
         "====> Epoch: {} Average loss: {:.4f}, r2 score {:.4f}".format(
             epoch,
-            accum_total_loss / n_samples,
-            r2_score / n_samples,
+            accum_total_loss,
+            r2_score,
         )
     )
     if epoch % freq == 0:
-        if model.model_name != "SlotMLPEncoder":
-            # for models that outputs images
-            show_pred_img = predicted_images[:8, ...].cpu().clamp(0, 1)
-            img_grid = torchvision.utils.make_grid(show_pred_img)
-            log_dict[f"{mode} reconstruction"] = [wandb.Image(img_grid)]
-            img_grid = torchvision.utils.make_grid(data[:8, ...].to("cpu"))
-            log_dict[f"{mode} target"] = [wandb.Image(img_grid)]
-
-            log_dict[f"{mode} reconstruction loss"] = (
-                accum_reconstruction_loss / n_samples
-            )
-
-        if model.model_name in ["SlotMLPAdditiveDecoder", "SlotMLPAdditive"]:
-            # for models that outputs separate figures
-            for i, figure in enumerate(figures):
-                show_pred_img = figure[:8, ...].cpu().clamp(0, 1)
-                img_grid = torchvision.utils.make_grid(show_pred_img)
-                log_dict[f"{mode} figure {i}"] = [wandb.Image(img_grid)]
-
-        if model.model_name not in [
-            "SlotMLPAdditiveDecoder",
-            "SlotMLPMonolithicDecoder",
-        ]:
-            # for models that predicts latents
-            for i, latent_r2 in enumerate(per_latent_r2_score):
-                log_dict[f"{mode} latent {i} r2 score"] = latent_r2 / n_samples
-
-        log_dict[f"{mode} total loss"] = accum_total_loss / n_samples
-        log_dict[f"{mode} slots loss"] = accum_slots_loss / n_samples
-        log_dict[f"{mode} r2 score"] = r2_score / n_samples
-        wandb.log(log_dict, step=epoch)
+        wandb_log(
+            mode,
+            epoch,
+            freq,
+            total_loss=accum_total_loss,
+            slots_loss=accum_slots_loss,
+            reconstruction_loss=accum_reconstruction_loss,
+            r2_score=r2_score,
+            r2_score_raw=per_latent_r2_score,
+            true_images=data,
+            predicted_images=predicted_images,
+            predicted_figures=predicted_figures,
+            sampled_loss=accum_sampled_loss,
+            sampled_images=sampled_images,
+            sampled_figures=sampled_figures,
+        )
 
     return (
         accum_total_loss / n_samples,
@@ -151,6 +174,7 @@ def run(
     lr,
     weight_decay,
     reduction,
+    use_sampled_loss,
     n_samples_train,
     n_samples_test,
     n_slots,
@@ -167,13 +191,14 @@ def run(
     Run the training and testing. Currently only supports SpritesWorld dataset.
 
     Args:
-        model_name: Model to use. One of the models defined in models.py.
+        model_name: Model to use. One of the models defined in base_models.py.
         device: Device to use. Either "cpu" or "cuda".
         epochs: Number of epochs to train for.
         batch_size: Batch size to use.
         lr: Learning rate to use.
         weight_decay: Weight decay to use.
         reduction: Reduction to use for loss. Either "sum" or "mean".
+        use_sampled_loss: Whether to use sampled loss.
         n_samples_train: Number of samples in training dataset.
         n_samples_test: Number of samples in testing dataset (ID and OOD).
         n_slots: Number of slots, i.e. objects in scene.
@@ -194,6 +219,7 @@ def run(
         "lr": lr,
         "weight_decay": weight_decay,
         "reduction": reduction,
+        "use_sampled_loss": use_sampled_loss,
         "n_samples_train": n_samples_train,
         "n_samples_test": n_samples_test,
         "n_slots": n_slots,
@@ -228,19 +254,23 @@ def run(
     scale[scale == 0] = 1
 
     if model_name == "SlotMLPAdditive":
-        model = models.SlotMLPAdditive(in_channels, n_slots, n_slot_latents).to(device)
+        model = base_models.SlotMLPAdditive(in_channels, n_slots, n_slot_latents).to(
+            device
+        )
     elif model_name == "SlotMLPMonolithic":
-        model = models.SlotMLPMonolithic(in_channels, n_slots, n_slot_latents).to(
+        model = base_models.SlotMLPMonolithic(in_channels, n_slots, n_slot_latents).to(
             device
         )
     elif model_name == "SlotMLPEncoder":
-        model = models.SlotMLPEncoder(in_channels, n_slots, n_slot_latents).to(device)
-    elif model_name == "SlotMLPAdditiveDecoder":
-        model = models.SlotMLPAdditiveDecoder(in_channels, n_slots, n_slot_latents).to(
+        model = base_models.SlotMLPEncoder(in_channels, n_slots, n_slot_latents).to(
             device
         )
+    elif model_name == "SlotMLPAdditiveDecoder":
+        model = base_models.SlotMLPAdditiveDecoder(
+            in_channels, n_slots, n_slot_latents
+        ).to(device)
     elif model_name == "SlotMLPMonolithicDecoder":
-        model = models.SlotMLPMonolithicDecoder(
+        model = base_models.SlotMLPMonolithicDecoder(
             in_channels, n_slots, n_slot_latents
         ).to(device)
     wandb.watch(model)
@@ -248,7 +278,7 @@ def run(
 
     transform = transforms.Compose([transforms.ToTensor()])
     train_dataset = data.SpriteWorldDataset(
-        n_samples_test,
+        n_samples_train,
         n_slots,
         cfg,
         sample_mode=sample_mode_train,
@@ -257,7 +287,7 @@ def run(
         transform=transform,
     )
     test_dataset_id = data.SpriteWorldDataset(
-        n_samples_train,
+        n_samples_test,
         n_slots,
         cfg,
         sample_mode=sample_mode_test_id,
@@ -306,6 +336,7 @@ def run(
             mode="train",
             epoch=epoch,
             reduction=reduction,
+            use_sampled_loss=use_sampled_loss,
         )
         if epoch % 20 == 0:
             (
