@@ -132,7 +132,7 @@ class SlotMLPAdditive(torch.nn.Module):
         self.decoder = SlotMLPAdditiveDecoder(in_channels, n_slots, n_slot_latents)
         self.model_name = "SlotMLPAdditive"
 
-    def forward(self, x, sampled_z=None, true_latents=None, teacher_forcing=0.5):
+    def forward(self, x, sampled_z=None, true_latents=None, teacher_forcing=0):
         latents = self.encoder(x)
 
         if torch.rand(1) < teacher_forcing and true_latents is not None:

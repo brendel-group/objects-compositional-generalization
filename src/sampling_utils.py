@@ -26,14 +26,13 @@ def sample_random(
         l_type = latents_metadata[latent]
         if l_type == "continuous":
             z = cfg[latent].min + (cfg[latent].max - cfg[latent].min) * torch.rand(
-                n_samples, n_slots, 1
-            )
+                n_samples, n_slots)
         elif l_type == "discrete":
-            z = torch.randint(cfg[latent].min, cfg[latent].max, (n_samples, n_slots, 1))
+            z = torch.randint(cfg[latent].min, cfg[latent].max, (n_samples, n_slots))
         elif l_type == "categorical":
             z = np.random.choice(
                 [i for i, category in enumerate(cfg[latent])],
-                size=(n_samples, n_slots, 1),
+                size=(n_samples, n_slots),
             )
             z = torch.from_numpy(z)
         else:

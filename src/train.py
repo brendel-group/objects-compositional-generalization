@@ -7,6 +7,8 @@ import torch.utils.data
 import torchvision.transforms as transforms
 import wandb
 
+wandb.login(key="b17ca470c2ce70dd9d6c3ce01c6fc7656633fe91")
+
 from . import config
 from . import data
 from .models import base_models
@@ -29,6 +31,7 @@ def one_epoch(
     epoch=0,
     reduction="sum",
     use_sampled_loss=True,
+    teacher_forcing=0,
     freq=10,
 ):
     n_samples = len(dataloader.dataset)
@@ -64,15 +67,7 @@ def one_epoch(
             predicted_images, predicted_latents = model(data)
         elif model.model_name == "SlotMLPAdditive":
             if mode == "train" and use_sampled_loss:
-                # sampled_z = torch.rand(true_latents.shape).to(device)
-                sampled_z = torch.stack(
-                    [
-                        true_latents[np.random.permutation(true_latents.shape[0]), i, :]
-                        for i in range(true_latents.shape[1])
-                    ][::-1],
-                    dim=1,
-                )
-                # sampled_z = sample_z_from_gt(true_latents)
+                sampled_z = sample_z_from_gt(true_latents)
                 (
                     predicted_images,
                     predicted_latents,
@@ -84,7 +79,7 @@ def one_epoch(
                     data,
                     sampled_z,
                     true_latents,
-                    teacher_forcing=1,
+                    teacher_forcing=teacher_forcing,
                 )
             else:
                 predicted_images, predicted_latents, predicted_figures = model(data)
@@ -158,10 +153,10 @@ def one_epoch(
         )
 
     return (
-        accum_total_loss / n_samples,
-        accum_reconstruction_loss / n_samples,
-        accum_slots_loss / n_samples,
-        r2_score / n_samples,
+        accum_total_loss,
+        accum_reconstruction_loss,
+        accum_slots_loss,
+        r2_score,
     )
 
 
@@ -175,6 +170,7 @@ def run(
     weight_decay,
     reduction,
     use_sampled_loss,
+    teacher_forcing,
     n_samples_train,
     n_samples_test,
     n_slots,
@@ -199,6 +195,7 @@ def run(
         weight_decay: Weight decay to use.
         reduction: Reduction to use for loss. Either "sum" or "mean".
         use_sampled_loss: Whether to use sampled loss.
+        teacher_forcing: Teacher forcing ratio.
         n_samples_train: Number of samples in training dataset.
         n_samples_test: Number of samples in testing dataset (ID and OOD).
         n_slots: Number of slots, i.e. objects in scene.
@@ -220,6 +217,7 @@ def run(
         "weight_decay": weight_decay,
         "reduction": reduction,
         "use_sampled_loss": use_sampled_loss,
+        "teacher_forcing": teacher_forcing,
         "n_samples_train": n_samples_train,
         "n_samples_test": n_samples_test,
         "n_slots": n_slots,
@@ -275,6 +273,14 @@ def run(
         ).to(device)
     wandb.watch(model)
     optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+        optimizer,
+        patience=5,
+        factor=0.8,
+        verbose=True,
+        cooldown=2,
+        threshold=1e-5,
+    )
 
     transform = transforms.Compose([transforms.ToTensor()])
     train_dataset = data.SpriteWorldDataset(
@@ -327,6 +333,7 @@ def run(
 
     min_reconstruction_loss_ID = float("inf")
     min_reconstruction_loss_OOD = float("inf")
+    counter = 0
     for epoch in range(1, epochs + 1):
         total_loss, reconstruction_loss, slots_loss, r2_score = one_epoch(
             model,
@@ -337,6 +344,7 @@ def run(
             epoch=epoch,
             reduction=reduction,
             use_sampled_loss=use_sampled_loss,
+            teacher_forcing=teacher_forcing,
         )
         if epoch % 20 == 0:
             (
@@ -367,6 +375,12 @@ def run(
                 epoch=epoch,
                 reduction=reduction,
             )
+            print("OOD slots loss: ", ood_slots_loss)
+            if counter < 15:
+                if ood_slots_loss < 0.15 or counter > 0:
+                    counter += 1
+                    scheduler.step(ood_total_loss)
+                    print("Learning rate: ", optimizer.param_groups[0]["lr"])
 
             if id_reconstruction_loss < min_reconstruction_loss_ID:
                 min_reconstruction_loss_ID = id_reconstruction_loss
