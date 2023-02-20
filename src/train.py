@@ -13,7 +13,6 @@ from . import config
 from . import data
 from .models import base_models
 from .training_utils import (
-    sample_z_from_gt,
     calculate_r2_score,
     matched_slots_loss,
     collate_fn_normalizer,
@@ -31,7 +30,8 @@ def one_epoch(
     epoch=0,
     reduction="sum",
     use_sampled_loss=True,
-    teacher_forcing=0,
+    detached_latents=False,
+    unsupervised_mode=False,
     freq=10,
 ):
     n_samples = len(dataloader.dataset)
@@ -67,7 +67,6 @@ def one_epoch(
             predicted_images, predicted_latents = model(data)
         elif model.model_name == "SlotMLPAdditive":
             if mode == "train" and use_sampled_loss:
-                sampled_z = sample_z_from_gt(true_latents)
                 (
                     predicted_images,
                     predicted_latents,
@@ -75,11 +74,11 @@ def one_epoch(
                     z_hat,
                     sampled_images,
                     sampled_figures,
+                    sampled_z,
                 ) = model(
                     data,
-                    sampled_z,
-                    true_latents,
-                    teacher_forcing=teacher_forcing,
+                    use_sampled_loss=use_sampled_loss,
+                    detached_latents=(detached_latents and not unsupervised_mode),
                 )
             else:
                 predicted_images, predicted_latents, predicted_figures = model(data)
@@ -90,10 +89,14 @@ def one_epoch(
         elif model.model_name == "SlotMLPMonolithicDecoder":
             predicted_images = model(true_latents)
 
-        if model.model_name not in [
-            "SlotMLPAdditiveDecoder",
-            "SlotMLPMonolithicDecoder",
-        ]:
+        if (
+            model.model_name
+            not in [
+                "SlotMLPAdditiveDecoder",
+                "SlotMLPMonolithicDecoder",
+            ]
+            and not unsupervised_mode
+        ):
             slots_loss, inds = matched_slots_loss(
                 predicted_latents, true_latents, device, reduction=reduction
             )
@@ -119,7 +122,11 @@ def one_epoch(
             )
             accum_sampled_loss += sampled_loss.item() / n_samples
 
-        total_loss = reconstruction_loss + slots_loss + sampled_loss
+        total_loss = (
+            reconstruction_loss * 0.01
+            + slots_loss
+            + sampled_loss * max(1, epoch / 4000)
+        )
 
         accum_total_loss += total_loss.item() / n_samples
 
@@ -170,7 +177,8 @@ def run(
     weight_decay,
     reduction,
     use_sampled_loss,
-    teacher_forcing,
+    unsupervised_mode,
+    detached_latents,
     n_samples_train,
     n_samples_test,
     n_slots,
@@ -195,7 +203,8 @@ def run(
         weight_decay: Weight decay to use.
         reduction: Reduction to use for loss. Either "sum" or "mean".
         use_sampled_loss: Whether to use sampled loss.
-        teacher_forcing: Teacher forcing ratio.
+        unsupervised_mode: Turns model to Autoencoder mode (no slots loss).
+        detached_latents: Detach latents from encoder or not.
         n_samples_train: Number of samples in training dataset.
         n_samples_test: Number of samples in testing dataset (ID and OOD).
         n_slots: Number of slots, i.e. objects in scene.
@@ -217,7 +226,8 @@ def run(
         "weight_decay": weight_decay,
         "reduction": reduction,
         "use_sampled_loss": use_sampled_loss,
-        "teacher_forcing": teacher_forcing,
+        "unsupervised_mode": unsupervised_mode,
+        "detached_latents": detached_latents,
         "n_samples_train": n_samples_train,
         "n_samples_test": n_samples_test,
         "n_slots": n_slots,
@@ -272,6 +282,7 @@ def run(
             in_channels, n_slots, n_slot_latents
         ).to(device)
     wandb.watch(model)
+
     optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
         optimizer,
@@ -333,7 +344,7 @@ def run(
 
     min_reconstruction_loss_ID = float("inf")
     min_reconstruction_loss_OOD = float("inf")
-    counter = 0
+    flag = False
     for epoch in range(1, epochs + 1):
         total_loss, reconstruction_loss, slots_loss, r2_score = one_epoch(
             model,
@@ -344,8 +355,10 @@ def run(
             epoch=epoch,
             reduction=reduction,
             use_sampled_loss=use_sampled_loss,
-            teacher_forcing=teacher_forcing,
+            unsupervised_mode=unsupervised_mode,
+            detached_latents=detached_latents,
         )
+
         if epoch % 20 == 0:
             (
                 id_total_loss,
@@ -359,6 +372,7 @@ def run(
                 device,
                 mode="test_ID",
                 epoch=epoch,
+                unsupervised_mode=unsupervised_mode,
                 reduction=reduction,
             )
             (
@@ -373,14 +387,16 @@ def run(
                 device,
                 mode="test_OOD",
                 epoch=epoch,
+                unsupervised_mode=unsupervised_mode,
                 reduction=reduction,
             )
             print("OOD slots loss: ", ood_slots_loss)
-            if counter < 15:
-                if ood_slots_loss < 0.15 or counter > 0:
-                    counter += 1
-                    scheduler.step(ood_total_loss)
-                    print("Learning rate: ", optimizer.param_groups[0]["lr"])
+            if ood_slots_loss < 0.15 or ood_reconstruction_loss < 15 or flag:
+                scheduler.step(ood_total_loss)
+                flag = True
+                print("Learning rate: ", optimizer.param_groups[0]["lr"])
+            scheduler.step(total_loss)
+            print("Learning rate: ", optimizer.param_groups[0]["lr"])
 
             if id_reconstruction_loss < min_reconstruction_loss_ID:
                 min_reconstruction_loss_ID = id_reconstruction_loss

@@ -17,7 +17,8 @@ if __name__ == "__main__":
         default="SlotMLPAdditive",
     )
     parser.add_argument("--use_sampled_loss", choices=[True, False], default=True)
-    parser.add_argument("--teacher_forcing", type=float, default=1.0)
+    parser.add_argument("--unsupervised_mode", choices=[True, False], default=False)
+    parser.add_argument("--detached_latents", choices=[True, False], default=False)
     parser.add_argument("--epochs", type=int, default=10000)
     parser.add_argument("--batch_size", type=int, default=512)
     parser.add_argument("--lr", type=float, default=0.001)

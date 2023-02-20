@@ -2,6 +2,11 @@ import torch
 
 from . import models_utils
 
+from ..training_utils import (
+    sample_z_from_gt,
+
+)
+
 
 class SlotEncoder(torch.nn.Module):
     def __init__(self, in_channels, n_slots, n_slot_latents):
@@ -26,6 +31,7 @@ class TwinHeadedSlotEncoder(torch.nn.Module):
     def forward(self, x):
         x = self.encoder_shared(x)
         out = torch.stack([encoder(x) for encoder in self.encoder_separate], dim=1)
+        out = out.view(-1, self.n_slots, self.n_slot_latents)
         return out
 
 
@@ -48,12 +54,13 @@ class SlotMLPAdditiveDecoder(torch.nn.Module):
         self.model_name = "SlotMLPAdditiveDecoder"
 
     def forward(self, latents):
-        latents = latents.view(-1, self.n_slots, self.n_slot_latents)
+        # image = torch.zeros_like(self.decoder(latents[0, 0]))
         image = 0
         figures = []
         for i in range(self.n_slots):
             figure = self.decoder(latents[:, i, :])
             image += figure
+            # models_utils.add_figures_with_obstruction(image, figure)
             figures.append(figure)
         return image, figures
 
@@ -132,20 +139,21 @@ class SlotMLPAdditive(torch.nn.Module):
         self.decoder = SlotMLPAdditiveDecoder(in_channels, n_slots, n_slot_latents)
         self.model_name = "SlotMLPAdditive"
 
-    def forward(self, x, sampled_z=None, true_latents=None, teacher_forcing=0):
+    def forward(self, x, use_sampled_loss=False, detached_latents=False):
         latents = self.encoder(x)
 
-        if torch.rand(1) < teacher_forcing and true_latents is not None:
-            image, figures = self.decoder(true_latents)
+        if detached_latents:
+            image, figures = self.decoder(latents.detach())
         else:
             image, figures = self.decoder(latents)
 
-        if sampled_z is None:
-            return image, latents, figures
-        else:
+        if use_sampled_loss:
+            sampled_z = sample_z_from_gt(latents.detach())
             x_hat, figures_hat = self.decoder(sampled_z)
-            z_hat = self.encoder(x_hat)
-            return image, latents, figures, z_hat, x_hat, figures_hat
+            z_hat = self.encoder(x_hat.detach())
+            return image, latents, figures, z_hat, x_hat, figures_hat, sampled_z
+        else:
+            return image, latents, figures
 
 
 class SlotMLPEncoder(torch.nn.Module):
@@ -159,7 +167,7 @@ class SlotMLPEncoder(torch.nn.Module):
         in_channels: int,
         n_slots: int,
         n_slot_latents: int,
-        twin_headed: bool = True,
+        twin_headed: bool = False,
     ) -> None:
         super(SlotMLPEncoder, self).__init__()
         self.n_slots = n_slots

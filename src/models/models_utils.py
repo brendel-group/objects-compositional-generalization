@@ -1,6 +1,6 @@
 import numpy as np
 import torch.nn as nn
-
+import torch
 
 class View(nn.Module):
     def __init__(self, size):
@@ -101,3 +101,13 @@ def build_grid(resolution):
     grid = np.expand_dims(grid, axis=0)
     grid = grid.astype(np.float32)
     return np.concatenate([grid, 1.0 - grid], axis=-1)
+
+
+def add_figures_with_obstruction(
+    figure_1: torch.Tensor, figure_2: torch.Tensor
+) -> torch.Tensor:
+    """Add two figures with pixels of figure_1 overlapping figure_2."""
+    mask_1 = figure_1 > 0
+    mask_2 = figure_2 > 0
+    mask = mask_1 * mask_2
+    return figure_1 + figure_2 * (~mask)
