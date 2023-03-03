@@ -139,7 +139,7 @@ class SlotMLPAdditive(torch.nn.Module):
         self.decoder = SlotMLPAdditiveDecoder(in_channels, n_slots, n_slot_latents)
         self.model_name = "SlotMLPAdditive"
 
-    def forward(self, x, use_sampled_loss=False, detached_latents=False):
+    def forward(self, x, use_consistency_loss=False, detached_latents=False):
         latents = self.encoder(x)
 
         if detached_latents:
@@ -147,7 +147,7 @@ class SlotMLPAdditive(torch.nn.Module):
         else:
             image, figures = self.decoder(latents)
 
-        if use_sampled_loss:
+        if use_consistency_loss:
             sampled_z = sample_z_from_gt(latents.detach())
             x_hat, figures_hat = self.decoder(sampled_z)
             z_hat = self.encoder(x_hat.detach())

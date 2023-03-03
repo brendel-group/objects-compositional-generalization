@@ -13,21 +13,25 @@ if __name__ == "__main__":
             "SlotMLPMonolithic",
             "SlotMLPAdditiveDecoder",
             "SlotMLPMonolithicDecoder",
+            "SlotAttention",
         ],
-        default="SlotMLPAdditive",
+        default="SlotAttention",
     )
-    parser.add_argument("--use_sampled_loss", choices=[True, False], default=True)
-    parser.add_argument("--unsupervised_mode", choices=[True, False], default=False)
+    parser.add_argument("--use_consistency_loss", choices=[True, False], default=False)
+    parser.add_argument("--unsupervised_mode", choices=[True, False], default=True)
     parser.add_argument("--detached_latents", choices=[True, False], default=False)
-    parser.add_argument("--epochs", type=int, default=10000)
-    parser.add_argument("--batch_size", type=int, default=512)
+    parser.add_argument("--epochs", type=int, default=2000)
+    parser.add_argument("--batch_size", type=int, default=64)
     parser.add_argument("--lr", type=float, default=0.001)
-    parser.add_argument("--weight_decay", type=float, default=0.1)
+    parser.add_argument("--warmup", choices=[True, False], default=True)
+    parser.add_argument("--weight_decay", type=float, default=0.001)
+    parser.add_argument("--lr_scheduler_step", type=int, default=50)
     parser.add_argument("--reduction", choices=["mean", "sum"], default="sum")
+    parser.add_argument("--reconstruction_term_weight", type=float, default=1.0)
     parser.add_argument("--n_samples_train", type=int, default=150000)
-    parser.add_argument("--n_samples_test", type=int, default=1000)
+    parser.add_argument("--n_samples_test", type=int, default=5000)
     parser.add_argument("--n_slots", type=int, default=2)
-    parser.add_argument("--n_slot_latents", type=int, default=8)
+    parser.add_argument("--n_slot_latents", type=int, default=16)
     parser.add_argument("--no_overlap", choices=[True, False], default=True)
     parser.add_argument("--sample_mode_train", type=str, default="diagonal")
     parser.add_argument("--sample_mode_test_id", type=str, default="diagonal")

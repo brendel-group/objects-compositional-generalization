@@ -70,6 +70,7 @@ class SpriteWorldDataset(torch.utils.data.TensorDataset):
         delta: float = 1,
         no_overlap: bool = False,
         transform: Optional[Callable] = None,
+        z: Optional[torch.Tensor] = None,
         **kwargs,
     ):
         self.n_samples = n_samples
@@ -106,14 +107,18 @@ class SpriteWorldDataset(torch.utils.data.TensorDataset):
                     f"Delta is too big for 'no_overlap' mode, setting it to {max_delta}."
                 )
                 self.delta = max_delta
-        self.z = sample_latents(
-            self.n_samples,
-            self.n_slots,
-            self.cfg,
-            self.sample_mode,
-            delta=self.delta,
-            **kwargs,
-        )
+
+        if z is None:
+            self.z = sample_latents(
+                self.n_samples,
+                self.n_slots,
+                self.cfg,
+                self.sample_mode,
+                delta=self.delta,
+                **kwargs,
+            )
+        else:
+            self.z = z
 
         self.__generate_ind = 0
         self.env = environment.Environment(

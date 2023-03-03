@@ -4,7 +4,7 @@ import torchvision
 
 def __log_images(log_dict, images, title):
     show_pred_img = images[:8, ...].cpu().clamp(0, 1)
-    img_grid = torchvision.utils.make_grid(show_pred_img)
+    img_grid = torchvision.utils.make_grid(show_pred_img, pad_value=1)
     log_dict[title] = [wandb.Image(img_grid)]
 
 
@@ -28,7 +28,7 @@ def wandb_log(
     true_images=None,
     predicted_images=None,
     predicted_figures=None,
-    sampled_loss=None,
+    consistency_loss=None,
     sampled_images=None,
     sampled_figures=None,
 ):
@@ -61,8 +61,8 @@ def wandb_log(
     if total_loss is not None:
         log_dict[f"{mode} total loss"] = total_loss
 
-    if sampled_loss is not None:
-        log_dict[f"{mode} sampled loss"] = sampled_loss
+    if consistency_loss is not None:
+        log_dict[f"{mode} consistency loss"] = consistency_loss
 
     if sampled_images is not None and epoch % freq == 0:
         __log_images(log_dict, sampled_images, f"{mode} sampled")

@@ -1,4 +1,5 @@
 import random
+import time
 
 import numpy as np
 import torch
@@ -12,6 +13,8 @@ wandb.login(key="b17ca470c2ce70dd9d6c3ce01c6fc7656633fe91")
 from . import config
 from . import data
 from .models import base_models
+from .models import slot_attention
+
 from .training_utils import (
     calculate_r2_score,
     matched_slots_loss,
@@ -29,7 +32,8 @@ def one_epoch(
     mode="train",
     epoch=0,
     reduction="sum",
-    use_sampled_loss=True,
+    reconstruction_term_weight=0.01,
+    use_consistency_loss=True,
     detached_latents=False,
     unsupervised_mode=False,
     freq=10,
@@ -44,14 +48,14 @@ def one_epoch(
 
     accum_total_loss = 0
     accum_slots_loss = 0
-    accum_sampled_loss = 0
+    accum_consistency_loss = 0
     accum_reconstruction_loss = 0
     r2_score = 0
     per_latent_r2_score = 0
     for batch_idx, (data, true_latents) in enumerate(dataloader):
         reconstruction_loss = 0
         slots_loss = 0
-        sampled_loss = 0
+        consistency_loss = 0
         predicted_figures = None
         predicted_images = None
         sampled_images = None
@@ -66,7 +70,7 @@ def one_epoch(
         if model.model_name == "SlotMLPMonolithic":
             predicted_images, predicted_latents = model(data)
         elif model.model_name == "SlotMLPAdditive":
-            if mode == "train" and use_sampled_loss:
+            if mode == "train" and use_consistency_loss:
                 (
                     predicted_images,
                     predicted_latents,
@@ -77,7 +81,7 @@ def one_epoch(
                     sampled_z,
                 ) = model(
                     data,
-                    use_sampled_loss=use_sampled_loss,
+                    use_consistency_loss=use_consistency_loss,
                     detached_latents=(detached_latents and not unsupervised_mode),
                 )
             else:
@@ -88,12 +92,15 @@ def one_epoch(
             predicted_images, predicted_figures = model(true_latents)
         elif model.model_name == "SlotMLPMonolithicDecoder":
             predicted_images = model(true_latents)
+        elif model.model_name == "SlotAttention":
+            predicted_images, predicted_latents, _ = model(data)
 
         if (
             model.model_name
             not in [
                 "SlotMLPAdditiveDecoder",
                 "SlotMLPMonolithicDecoder",
+                "SlotAttention",
             ]
             and not unsupervised_mode
         ):
@@ -115,17 +122,17 @@ def one_epoch(
         if (
             model.model_name in ["SlotMLPAdditive"]
             and mode == "train"
-            and use_sampled_loss
+            and use_consistency_loss
         ):
-            sampled_loss, _ = matched_slots_loss(
+            consistency_loss, _ = matched_slots_loss(
                 z_hat, sampled_z, device, reduction=reduction
             )
-            accum_sampled_loss += sampled_loss.item() / n_samples
+            accum_consistency_loss += consistency_loss.item() / n_samples
 
         total_loss = (
-            reconstruction_loss * 0.01
+            reconstruction_loss * reconstruction_term_weight
             + slots_loss
-            + sampled_loss * max(1, epoch / 4000)
+            + consistency_loss * max(1, epoch / 500)
         )
 
         accum_total_loss += total_loss.item() / n_samples
@@ -154,7 +161,7 @@ def one_epoch(
             true_images=data,
             predicted_images=predicted_images,
             predicted_figures=predicted_figures,
-            sampled_loss=accum_sampled_loss,
+            consistency_loss=accum_consistency_loss,
             sampled_images=sampled_images,
             sampled_figures=sampled_figures,
         )
@@ -175,8 +182,11 @@ def run(
     batch_size,
     lr,
     weight_decay,
+    lr_scheduler_step,
     reduction,
-    use_sampled_loss,
+    reconstruction_term_weight,
+    use_consistency_loss,
+    warmup,
     unsupervised_mode,
     detached_latents,
     n_samples_train,
@@ -201,8 +211,11 @@ def run(
         batch_size: Batch size to use.
         lr: Learning rate to use.
         weight_decay: Weight decay to use.
+        lr_scheduler_step: How often to decrease learning rate.
         reduction: Reduction to use for loss. Either "sum" or "mean".
-        use_sampled_loss: Whether to use sampled loss.
+        reconstruction_term_weight: Weight for reconstruction term in total loss.
+        use_consistency_loss: Whether to use consistency loss.
+        warmup: Whether to use warmup.
         unsupervised_mode: Turns model to Autoencoder mode (no slots loss).
         detached_latents: Detach latents from encoder or not.
         n_samples_train: Number of samples in training dataset.
@@ -224,8 +237,11 @@ def run(
         "batch_size": batch_size,
         "lr": lr,
         "weight_decay": weight_decay,
+        "lr_scheduler_step": lr_scheduler_step,
         "reduction": reduction,
-        "use_sampled_loss": use_sampled_loss,
+        "reconstruction_term_weight": reconstruction_term_weight,
+        "use_consistency_loss": use_consistency_loss,
+        "warmup": warmup,
         "unsupervised_mode": unsupervised_mode,
         "detached_latents": detached_latents,
         "n_samples_train": n_samples_train,
@@ -241,6 +257,7 @@ def run(
         "seed": seed,
     }
     wandb.init(config=wandb_config, project="object_centric_ood")
+    time_created = time.strftime("%Y-%m-%d_%H-%M-%S", time.localtime())
 
     if device == "cuda":
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -281,17 +298,24 @@ def run(
         model = base_models.SlotMLPMonolithicDecoder(
             in_channels, n_slots, n_slot_latents
         ).to(device)
-    wandb.watch(model)
+    elif model_name == "SlotAttention":
+        encoder = slot_attention.SlotAttentionEncoder(
+            resolution=(64, 64), hid_dim=n_slot_latents
+        ).to(device)
 
-    optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-        optimizer,
-        patience=5,
-        factor=0.8,
-        verbose=True,
-        cooldown=2,
-        threshold=1e-5,
-    )
+        decoder = slot_attention.SlotAttentionDecoder(
+            hid_dim=n_slot_latents, resolution=(64, 64), device=device
+        )
+        model = slot_attention.SlotAttentionAutoEncoder(
+            encoder=encoder,
+            decoder=decoder,
+            num_slots=n_slots,
+            num_iterations=3,
+            hid_dim=n_slot_latents,
+            device=device,
+        ).to(device)
+
+    wandb.watch(model)
 
     transform = transforms.Compose([transforms.ToTensor()])
     train_dataset = data.SpriteWorldDataset(
@@ -344,7 +368,24 @@ def run(
 
     min_reconstruction_loss_ID = float("inf")
     min_reconstruction_loss_OOD = float("inf")
-    flag = False
+
+    # lr=5e-6 for warming up
+    if warmup:
+        init_lr = 5e-6
+    else:
+        init_lr = lr
+
+    optimizer = torch.optim.AdamW(
+        model.parameters(), lr=init_lr, weight_decay=weight_decay
+    )
+
+    if warmup:
+        scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=2)
+    else:
+        scheduler = torch.optim.lr_scheduler.StepLR(
+            optimizer, step_size=lr_scheduler_step, gamma=0.5
+        )
+
     for epoch in range(1, epochs + 1):
         total_loss, reconstruction_loss, slots_loss, r2_score = one_epoch(
             model,
@@ -354,10 +395,23 @@ def run(
             mode="train",
             epoch=epoch,
             reduction=reduction,
-            use_sampled_loss=use_sampled_loss,
+            reconstruction_term_weight=reconstruction_term_weight,
+            use_consistency_loss=use_consistency_loss,
             unsupervised_mode=unsupervised_mode,
             detached_latents=detached_latents,
         )
+
+        if warmup and scheduler.get_last_lr()[0] > lr:
+            optimizer.param_groups[0]["lr"] = lr
+            scheduler = torch.optim.lr_scheduler.StepLR(
+                optimizer, step_size=lr_scheduler_step, gamma=0.5
+            )
+            warmup = False
+
+        if scheduler.get_last_lr()[0] > 1e-7:
+            scheduler.step()
+
+        print("Learning rate: ", optimizer.param_groups[0]["lr"])
 
         if epoch % 20 == 0:
             (
@@ -372,8 +426,9 @@ def run(
                 device,
                 mode="test_ID",
                 epoch=epoch,
-                unsupervised_mode=unsupervised_mode,
                 reduction=reduction,
+                reconstruction_term_weight=reconstruction_term_weight,
+                unsupervised_mode=unsupervised_mode,
             )
             (
                 ood_total_loss,
@@ -387,16 +442,10 @@ def run(
                 device,
                 mode="test_OOD",
                 epoch=epoch,
-                unsupervised_mode=unsupervised_mode,
                 reduction=reduction,
+                reconstruction_term_weight=reconstruction_term_weight,
+                unsupervised_mode=unsupervised_mode,
             )
-            print("OOD slots loss: ", ood_slots_loss)
-            if ood_slots_loss < 0.15 or ood_reconstruction_loss < 15 or flag:
-                scheduler.step(ood_total_loss)
-                flag = True
-                print("Learning rate: ", optimizer.param_groups[0]["lr"])
-            scheduler.step(total_loss)
-            print("Learning rate: ", optimizer.param_groups[0]["lr"])
 
             if id_reconstruction_loss < min_reconstruction_loss_ID:
                 min_reconstruction_loss_ID = id_reconstruction_loss
@@ -405,7 +454,9 @@ def run(
                 print("Epoch:", epoch)
                 print("ID reconstruction loss:", id_reconstruction_loss)
                 print()
-                torch.save(model.state_dict(), f"{model_name}_best_id_model.pt")
+                torch.save(
+                    model.state_dict(), f"{model_name}_{time_created}_best_id_model.pt"
+                )
 
             if ood_reconstruction_loss < min_reconstruction_loss_OOD:
                 min_reconstruction_loss_OOD = ood_reconstruction_loss
@@ -414,6 +465,8 @@ def run(
                 print("Epoch:", epoch)
                 print("OOD reconstruction loss:", ood_reconstruction_loss)
                 print()
-                torch.save(model.state_dict(), f"{model_name}_best_ood_model.pt")
+                torch.save(
+                    model.state_dict(), f"{model_name}_{time_created}_best_ood_model.pt"
+                )
 
-    torch.save(model.state_dict(), f"{model_name}_last_train_model.pt")
+    torch.save(model.state_dict(), f"{model_name}_{time_created}_last_train_model.pt")
