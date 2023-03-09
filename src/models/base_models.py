@@ -24,6 +24,8 @@ class SlotEncoder(torch.nn.Module):
 class TwinHeadedSlotEncoder(torch.nn.Module):
     def __init__(self, in_channels, n_slots, n_slot_latents):
         super(TwinHeadedSlotEncoder, self).__init__()
+        self.n_slots = n_slots
+        self.n_slot_latents = n_slot_latents
         self.encoder_shared, self.encoder_separate = models_utils.get_twin_head_encoder(
             in_channels, n_slots, n_slot_latents
         )
@@ -149,8 +151,10 @@ class SlotMLPAdditive(torch.nn.Module):
 
         if use_consistency_loss:
             sampled_z = sample_z_from_gt(latents.detach())
-            x_hat, figures_hat = self.decoder(sampled_z)
-            z_hat = self.encoder(x_hat.detach())
+            with torch.no_grad():
+                x_hat, figures_hat = self.decoder(sampled_z)
+
+            z_hat = self.encoder(x_hat)
             return image, latents, figures, z_hat, x_hat, figures_hat, sampled_z
         else:
             return image, latents, figures

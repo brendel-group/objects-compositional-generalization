@@ -109,3 +109,12 @@ def sample_z_from_gt(true_latents):
         dim=1,
     )
     return sampled_z.to(true_latents.device)
+
+def set_seed(seed):
+    """Set seed for reproducibility."""
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    np.random.seed(seed)
+
+    # torch.backends.cudnn.deterministic = True
+    # torch.backends.cudnn.benchmark = False

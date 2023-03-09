@@ -11,7 +11,7 @@ def __log_images(log_dict, images, title):
 def __log_figures(log_dict, figures, title):
     for i, figure in enumerate(figures):
         show_pred_img = figure[:8, ...].cpu().clamp(0, 1)
-        img_grid = torchvision.utils.make_grid(show_pred_img)
+        img_grid = torchvision.utils.make_grid(show_pred_img, pad_value=1)
         log_dict[f"{title} figure {i}"] = [wandb.Image(img_grid)]
 
 

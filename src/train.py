@@ -1,7 +1,6 @@
-import random
+import os.path
 import time
 
-import numpy as np
 import torch
 import torch.nn.functional as F
 import torch.utils.data
@@ -19,9 +18,12 @@ from .training_utils import (
     calculate_r2_score,
     matched_slots_loss,
     collate_fn_normalizer,
+    set_seed,
 )
 
 from .wandb_utils import wandb_log
+
+from .data_utlis import dump_generated_dataset, PreGeneratedDataset
 
 
 def one_epoch(
@@ -132,13 +134,14 @@ def one_epoch(
         total_loss = (
             reconstruction_loss * reconstruction_term_weight
             + slots_loss
-            + consistency_loss * max(1, epoch / 500)
+            + consistency_loss * min(1, epoch / 500)
         )
 
         accum_total_loss += total_loss.item() / n_samples
 
         if mode == "train":
             total_loss.backward()
+            # torch.nn.utils.clip_grad_norm_(model.parameters(), 1)
             optimizer.step()
 
     print(
@@ -263,11 +266,7 @@ def run(
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print("Using device:", device)
 
-    random.seed(seed)
-    np.random.seed(seed)
-    torch.manual_seed(seed)
-    # torch.backends.cudnn.deterministic = True
-    # torch.backends.cudnn.benchmark = False
+    set_seed(seed)
 
     cfg = config.SpriteWorldConfig()
     min_offset = torch.FloatTensor(
@@ -276,7 +275,10 @@ def run(
     scale = torch.FloatTensor(
         [rng.max - rng.min for rng in cfg.get_ranges().values()]
     ).reshape(1, 1, -1)
-    scale[scale == 0] = 1
+
+    # excluding fixed latents (rotation and two colour channels
+    min_offset = torch.cat([min_offset[:, :, :-4], min_offset[:, :, -3:-2]], dim=-1)
+    scale = torch.cat([scale[:, :, :-4], scale[:, :, -3:-2]], dim=-1)
 
     if model_name == "SlotMLPAdditive":
         model = base_models.SlotMLPAdditive(in_channels, n_slots, n_slot_latents).to(
@@ -318,33 +320,61 @@ def run(
     wandb.watch(model)
 
     transform = transforms.Compose([transforms.ToTensor()])
-    train_dataset = data.SpriteWorldDataset(
-        n_samples_train,
-        n_slots,
-        cfg,
-        sample_mode=sample_mode_train,
-        delta=delta,
-        no_overlap=no_overlap,
-        transform=transform,
-    )
-    test_dataset_id = data.SpriteWorldDataset(
-        n_samples_test,
-        n_slots,
-        cfg,
-        sample_mode=sample_mode_test_id,
-        delta=delta,
-        no_overlap=no_overlap,
-        transform=transform,
-    )
-    test_dataset_ood = data.SpriteWorldDataset(
-        n_samples_test,
-        n_slots,
-        cfg,
-        sample_mode=sample_mode_test_ood,
-        delta=delta,
-        no_overlap=no_overlap,
-        transform=transform,
-    )
+
+    # TODO: Remove all loading from disk
+    path = "/mnt/qb/work/bethge/apanfilov27"
+    # path = ""
+    load = True
+    save = False
+    os.path.isdir(path)
+
+    if load and os.path.isdir(os.path.join(path, "train")):
+        train_dataset = PreGeneratedDataset(os.path.join(path, "train"))
+        print("Train dataset successfully loaded from disk.")
+    else:
+        train_dataset = data.SpriteWorldDataset(
+            n_samples_train,
+            n_slots,
+            cfg,
+            sample_mode=sample_mode_train,
+            delta=delta,
+            no_overlap=no_overlap,
+            transform=transform,
+        )
+        if save:
+            dump_generated_dataset(train_dataset, os.path.join(path, "train"))
+
+    if load and os.path.isdir(os.path.join(path, "test_id")):
+        test_dataset_id = PreGeneratedDataset(os.path.join(path, "test_id"))
+        print("Test ID dataset successfully loaded from disk.")
+    else:
+        test_dataset_id = data.SpriteWorldDataset(
+            n_samples_test,
+            n_slots,
+            cfg,
+            sample_mode=sample_mode_test_id,
+            delta=delta,
+            no_overlap=no_overlap,
+            transform=transform,
+        )
+        if save:
+            dump_generated_dataset(test_dataset_id, os.path.join(path, "test_id"))
+
+    if load and os.path.isdir(os.path.join(path, "test_ood")):
+        test_dataset_ood = PreGeneratedDataset(os.path.join(path, "test_ood"))
+        print("Test OOD dataset successfully loaded from disk.")
+    else:
+        test_dataset_ood = data.SpriteWorldDataset(
+            n_samples_test,
+            n_slots,
+            cfg,
+            sample_mode=sample_mode_test_ood,
+            delta=delta,
+            no_overlap=no_overlap,
+            transform=transform,
+        )
+        if save:
+            dump_generated_dataset(test_dataset_ood, os.path.join(path, "test_ood"))
 
     # dataloaders
     train_loader = torch.utils.data.DataLoader(
@@ -386,6 +416,7 @@ def run(
             optimizer, step_size=lr_scheduler_step, gamma=0.5
         )
 
+    old_loss = None
     for epoch in range(1, epochs + 1):
         total_loss, reconstruction_loss, slots_loss, r2_score = one_epoch(
             model,
@@ -413,6 +444,24 @@ def run(
 
         print("Learning rate: ", optimizer.param_groups[0]["lr"])
 
+        if old_loss and total_loss > 10 * old_loss:
+            print("Loss exploded, changing seed and reloading best model..")
+            seed += 1
+            set_seed(seed)
+            print(f"{seed=}")
+
+            if os.path.exists(f"{model_name}_{time_created}_best_ood_model.pt"):
+                model.load_state_dict(
+                    torch.load(f"{model_name}_{time_created}_best_ood_model.pt")
+                )
+            else:
+                model.load_state_dict(
+                    torch.load(f"{model_name}_{time_created}_last_model.pt")
+                )
+            continue
+
+        old_loss = total_loss
+        torch.save(model.state_dict(), f"{model_name}_{time_created}_last_model.pt")
         if epoch % 20 == 0:
             (
                 id_total_loss,

@@ -67,7 +67,7 @@ def plot_dataset_images(dataset, rows=5, cols=5, name="gt", pred=False, id_mask=
 def create_traversed_dataset(initial_sample, n_steps=4):
     samples = []
     y_range = np.linspace(0.2, 0.8, n_steps)
-    c_1_range = np.linspace(0.1, 0.9, n_steps)
+    c_0_range = np.linspace(0.1, 0.9, n_steps)
 
     for i in range(n_steps):
         for j in range(n_steps):
@@ -75,11 +75,10 @@ def create_traversed_dataset(initial_sample, n_steps=4):
             sample[0][1] = y_range[i]
             sample[1][1] = y_range[j]
 
-            sample[0][-3] = c_1_range[i]
-            sample[1][-3] = c_1_range[j]
+            sample[0][-3] = c_0_range[i]
+            sample[1][-3] = c_0_range[j]
 
             samples.append(sample)
-
     traversed_dataset = data.SpriteWorldDataset(
         len(torch.stack(samples)),
         2,
