@@ -2,9 +2,8 @@ import torch
 
 from . import models_utils
 
-from ..training_utils import (
-    sample_z_from_gt,
-
+from src.utils.training_utils import (
+    sample_z_from_latents,
 )
 
 
@@ -143,15 +142,14 @@ class SlotMLPAdditive(torch.nn.Module):
 
     def forward(self, x, use_consistency_loss=False, detached_latents=False):
         latents = self.encoder(x)
-
-        if detached_latents:
-            image, figures = self.decoder(latents.detach())
-        else:
-            image, figures = self.decoder(latents)
+        image, figures = self.decoder(latents)
 
         if use_consistency_loss:
-            sampled_z = sample_z_from_gt(latents.detach())
-            with torch.no_grad():
+            sampled_z = sample_z_from_latents(latents.detach())
+            if detached_latents:
+                with torch.no_grad():
+                    x_hat, figures_hat = self.decoder(sampled_z)
+            else:
                 x_hat, figures_hat = self.decoder(sampled_z)
 
             z_hat = self.encoder(x_hat)

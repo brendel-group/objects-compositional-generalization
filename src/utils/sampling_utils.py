@@ -1,7 +1,7 @@
 import numpy as np
 import torch
 
-from .config import Config
+from src.config import Config
 
 
 def sample_random(

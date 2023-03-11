@@ -14,16 +14,16 @@ from . import data
 from .models import base_models
 from .models import slot_attention
 
-from .training_utils import (
-    calculate_r2_score,
+from src.utils.training_utils import (
+    r2_score,
     matched_slots_loss,
     collate_fn_normalizer,
     set_seed,
 )
 
-from .wandb_utils import wandb_log
+from src.utils.wandb_utils import wandb_log
 
-from .data_utlis import dump_generated_dataset, PreGeneratedDataset
+from src.utils.data_utlis import dump_generated_dataset, PreGeneratedDataset
 
 
 def one_epoch(
@@ -34,7 +34,8 @@ def one_epoch(
     mode="train",
     epoch=0,
     reduction="sum",
-    reconstruction_term_weight=0.01,
+    reconstruction_term_weight=1,
+    consistency_term_weight=1,
     use_consistency_loss=True,
     detached_latents=False,
     unsupervised_mode=False,
@@ -52,7 +53,7 @@ def one_epoch(
     accum_slots_loss = 0
     accum_consistency_loss = 0
     accum_reconstruction_loss = 0
-    r2_score = 0
+    accum_r2_score = 0
     per_latent_r2_score = 0
     for batch_idx, (data, true_latents) in enumerate(dataloader):
         reconstruction_loss = 0
@@ -111,8 +112,8 @@ def one_epoch(
             )
             accum_slots_loss += slots_loss.item() / n_samples
 
-            avg_r2, raw_r2 = calculate_r2_score(true_latents, predicted_latents, inds)
-            r2_score += avg_r2 * len(data) / n_samples
+            avg_r2, raw_r2 = r2_score(true_latents, predicted_latents, inds)
+            accum_r2_score += avg_r2 * len(data) / n_samples
             per_latent_r2_score += raw_r2 * len(data) / n_samples
 
         if model.model_name != "SlotMLPEncoder":
@@ -134,21 +135,20 @@ def one_epoch(
         total_loss = (
             reconstruction_loss * reconstruction_term_weight
             + slots_loss
-            + consistency_loss * min(1, epoch / 500)
+            + consistency_loss * consistency_term_weight
         )
 
         accum_total_loss += total_loss.item() / n_samples
 
         if mode == "train":
             total_loss.backward()
-            # torch.nn.utils.clip_grad_norm_(model.parameters(), 1)
             optimizer.step()
 
     print(
         "====> Epoch: {} Average loss: {:.4f}, r2 score {:.4f}".format(
             epoch,
             accum_total_loss,
-            r2_score,
+            accum_r2_score,
         )
     )
     if epoch % freq == 0:
@@ -159,7 +159,7 @@ def one_epoch(
             total_loss=accum_total_loss,
             slots_loss=accum_slots_loss,
             reconstruction_loss=accum_reconstruction_loss,
-            r2_score=r2_score,
+            r2_score=accum_r2_score,
             r2_score_raw=per_latent_r2_score,
             true_images=data,
             predicted_images=predicted_images,
@@ -173,7 +173,7 @@ def one_epoch(
         accum_total_loss,
         accum_reconstruction_loss,
         accum_slots_loss,
-        r2_score,
+        accum_r2_score,
     )
 
 
@@ -188,6 +188,7 @@ def run(
     lr_scheduler_step,
     reduction,
     reconstruction_term_weight,
+    consistency_term_weight,
     use_consistency_loss,
     warmup,
     unsupervised_mode,
@@ -217,6 +218,7 @@ def run(
         lr_scheduler_step: How often to decrease learning rate.
         reduction: Reduction to use for loss. Either "sum" or "mean".
         reconstruction_term_weight: Weight for reconstruction term in total loss.
+        consistency_term_weight: Weight for consistency term in total loss.
         use_consistency_loss: Whether to use consistency loss.
         warmup: Whether to use warmup.
         unsupervised_mode: Turns model to Autoencoder mode (no slots loss).
@@ -243,6 +245,7 @@ def run(
         "lr_scheduler_step": lr_scheduler_step,
         "reduction": reduction,
         "reconstruction_term_weight": reconstruction_term_weight,
+        "consistency_term_weight": consistency_term_weight,
         "use_consistency_loss": use_consistency_loss,
         "warmup": warmup,
         "unsupervised_mode": unsupervised_mode,
@@ -416,7 +419,6 @@ def run(
             optimizer, step_size=lr_scheduler_step, gamma=0.5
         )
 
-    old_loss = None
     for epoch in range(1, epochs + 1):
         total_loss, reconstruction_loss, slots_loss, r2_score = one_epoch(
             model,
@@ -427,6 +429,7 @@ def run(
             epoch=epoch,
             reduction=reduction,
             reconstruction_term_weight=reconstruction_term_weight,
+            consistency_term_weight=consistency_term_weight,
             use_consistency_loss=use_consistency_loss,
             unsupervised_mode=unsupervised_mode,
             detached_latents=detached_latents,
@@ -444,24 +447,6 @@ def run(
 
         print("Learning rate: ", optimizer.param_groups[0]["lr"])
 
-        if old_loss and total_loss > 10 * old_loss:
-            print("Loss exploded, changing seed and reloading best model..")
-            seed += 1
-            set_seed(seed)
-            print(f"{seed=}")
-
-            if os.path.exists(f"{model_name}_{time_created}_best_ood_model.pt"):
-                model.load_state_dict(
-                    torch.load(f"{model_name}_{time_created}_best_ood_model.pt")
-                )
-            else:
-                model.load_state_dict(
-                    torch.load(f"{model_name}_{time_created}_last_model.pt")
-                )
-            continue
-
-        old_loss = total_loss
-        torch.save(model.state_dict(), f"{model_name}_{time_created}_last_model.pt")
         if epoch % 20 == 0:
             (
                 id_total_loss,
@@ -477,6 +462,7 @@ def run(
                 epoch=epoch,
                 reduction=reduction,
                 reconstruction_term_weight=reconstruction_term_weight,
+                consistency_term_weight=consistency_term_weight,
                 unsupervised_mode=unsupervised_mode,
             )
             (
@@ -493,6 +479,7 @@ def run(
                 epoch=epoch,
                 reduction=reduction,
                 reconstruction_term_weight=reconstruction_term_weight,
+                consistency_term_weight=consistency_term_weight,
                 unsupervised_mode=unsupervised_mode,
             )
 

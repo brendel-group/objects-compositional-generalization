@@ -6,11 +6,11 @@ from scipy.optimize import linear_sum_assignment
 from torchmetrics import R2Score
 
 
-def calculate_r2_score(
+def r2_score(
     true_latents: torch.Tensor, predicted_latents: torch.Tensor, indices: torch.Tensor
 ) -> Tuple[int, torch.Tensor]:
     """
-    Calculate R2 score. Slots are flattened before calculating R2 score.
+    Calculates R2 score. Slots are flattened before calculating R2 score.
 
     Args:
         true_latents: tensor of shape (batch_size, n_slots, n_latents)
@@ -92,23 +92,23 @@ def collate_fn_normalizer(batch, bias=0, scale=1):
     return torch.stack(images), latents
 
 
-def sample_z_from_gt(true_latents):
-    """Sample z from ground truth latents."""
-    flattened_latents = true_latents.detach().cpu().view(-1, true_latents.shape[-1])
+def sample_z_from_latents(latents):
+    """Sample z from latents."""
+    flattened_latents = latents.detach().cpu().view(-1, latents.shape[-1])
     sampled_z = torch.stack(
         [
             flattened_latents[
                 np.random.choice(
                     len(flattened_latents),
-                    size=len(true_latents),
+                    size=len(latents),
                 ),
                 :,
             ]
-            for _ in range(true_latents.shape[1])
+            for _ in range(latents.shape[1])
         ],
         dim=1,
     )
-    return sampled_z.to(true_latents.device)
+    return sampled_z.to(latents.device)
 
 def set_seed(seed):
     """Set seed for reproducibility."""
@@ -116,5 +116,5 @@ def set_seed(seed):
     torch.cuda.manual_seed(seed)
     np.random.seed(seed)
 
-    # torch.backends.cudnn.deterministic = True
-    # torch.backends.cudnn.benchmark = False
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False

@@ -1,4 +1,3 @@
-import os.path
 import warnings
 from typing import Optional, Callable
 
@@ -7,7 +6,7 @@ import torch
 import tqdm
 from spriteworld import environment, renderers, sprite, tasks
 
-from . import sampling_utils
+from .utils import sampling_utils
 from .config import Config, SpriteWorldConfig
 
 warnings.filterwarnings("ignore", module="spriteworld")
