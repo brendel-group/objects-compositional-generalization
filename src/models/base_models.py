@@ -141,21 +141,40 @@ class SlotMLPAdditive(torch.nn.Module):
         self.model_name = "SlotMLPAdditive"
 
     def forward(self, x, use_consistency_loss=False, detached_latents=False):
-        latents = self.encoder(x)
-        image, figures = self.decoder(latents)
+        """
+        Compute forward pass of the model.
+        Reconstruction: \hat{x} = sum_{i=1}^{n_slots} f(z_i)
+        "Imagined" latent vectors: z_tilde = \pi(f^{-1}(\hat{x})})
+        "Imagined" images: \hat{x_tilde} = sum_{i=1}^{n_slots} f(z_tilde_i)
+
+        Args:
+            x: input image, of shape (batch_size, in_channels, height, width)
+            use_consistency_loss: whether to use consistency loss
+            detached_latents: whether to propagate gradients from consistency loss through decoder
+        """
+        hat_z = self.encoder(x)
+        hat_x, figures = self.decoder(hat_z)
 
         if use_consistency_loss:
-            sampled_z = sample_z_from_latents(latents.detach())
+            z_sampled = sample_z_from_latents(hat_z.detach())
             if detached_latents:
                 with torch.no_grad():
-                    x_hat, figures_hat = self.decoder(sampled_z)
+                    x_sampled, figures_sampled = self.decoder(z_sampled)
             else:
-                x_hat, figures_hat = self.decoder(sampled_z)
+                x_sampled, figures_sampled = self.decoder(z_sampled)
 
-            z_hat = self.encoder(x_hat)
-            return image, latents, figures, z_hat, x_hat, figures_hat, sampled_z
+            hat_z_sampled = self.encoder(x_sampled)
+            return (
+                hat_x,
+                hat_z,
+                figures,
+                x_sampled,
+                hat_z_sampled,
+                figures_sampled,
+                z_sampled,
+            )
         else:
-            return image, latents, figures
+            return hat_x, hat_z, figures
 
 
 class SlotMLPEncoder(torch.nn.Module):

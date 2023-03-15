@@ -1,6 +1,7 @@
-import numpy as np
 import torch.nn as nn
 import torch
+
+import torch.nn.functional as F
 
 
 class View(nn.Module):
@@ -91,16 +92,6 @@ def get_decoder(in_dim, out_channels):
     return decoder
 
 
-def build_grid(resolution):
-    ranges = [np.linspace(0.0, 1.0, num=res) for res in resolution]
-    grid = np.meshgrid(*ranges, sparse=False, indexing="ij")
-    grid = np.stack(grid, axis=-1)
-    grid = np.reshape(grid, [resolution[0], resolution[1], -1])
-    grid = np.expand_dims(grid, axis=0)
-    grid = grid.astype(np.float32)
-    return np.concatenate([grid, 1.0 - grid], axis=-1)
-
-
 def add_figures_with_obstruction(
     figure_1: torch.Tensor, figure_2: torch.Tensor
 ) -> torch.Tensor:
@@ -109,3 +100,37 @@ def add_figures_with_obstruction(
     mask_2 = figure_2 > 0
     mask = mask_1 * mask_2
     return figure_1 + figure_2 * (~mask)
+
+
+class MLP(nn.Module):
+    def __init__(self, input_dim, output_dim, hidden_dim, n_layers, nonlinear=False):
+        super().__init__()
+        self.input_dim = input_dim
+        self.output_dim = output_dim
+        self.n_layers = n_layers
+        self.hidden_dim = [hidden_dim] * (self.n_layers - 1)
+
+        if nonlinear:
+            self._act_f = lambda x: F.leaky_relu(x, negative_slope=0.2)
+        else:
+            self._act_f = lambda x: x
+
+        if self.n_layers == 1:
+            _fc_list = [nn.Linear(self.input_dim, self.output_dim)]
+        else:
+            _fc_list = [nn.Linear(self.input_dim, self.hidden_dim[0])]
+            for i in range(1, self.n_layers - 1):
+                _fc_list.append(nn.Linear(self.hidden_dim[i - 1], self.hidden_dim[i]))
+            _fc_list.append(
+                nn.Linear(self.hidden_dim[self.n_layers - 2], self.output_dim)
+            )
+        self.fc = nn.ModuleList(_fc_list)
+
+    def forward(self, x):
+        h = x
+        for c in range(self.n_layers):
+            if c == self.n_layers - 1:
+                h = self.fc[c](h)
+            else:
+                h = self._act_f(self.fc[c](h))
+        return h

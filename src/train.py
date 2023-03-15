@@ -15,11 +15,10 @@ from .models import base_models
 from .models import slot_attention
 
 from src.utils.training_utils import (
-    r2_score,
-    matched_slots_loss,
     collate_fn_normalizer,
     set_seed,
 )
+from .metrics import r2_score, hungarian_slots_loss
 
 from src.utils.wandb_utils import wandb_log
 
@@ -72,16 +71,16 @@ def one_epoch(
 
         if model.model_name == "SlotMLPMonolithic":
             predicted_images, predicted_latents = model(data)
-        elif model.model_name == "SlotMLPAdditive":
+        elif model.model_name in ["SlotMLPAdditive", "SlotAttention"]:
             if mode == "train" and use_consistency_loss:
                 (
                     predicted_images,
                     predicted_latents,
                     predicted_figures,
-                    z_hat,
                     sampled_images,
+                    predicted_z_sampled,
                     sampled_figures,
-                    sampled_z,
+                    z_sampled,
                 ) = model(
                     data,
                     use_consistency_loss=use_consistency_loss,
@@ -95,8 +94,6 @@ def one_epoch(
             predicted_images, predicted_figures = model(true_latents)
         elif model.model_name == "SlotMLPMonolithicDecoder":
             predicted_images = model(true_latents)
-        elif model.model_name == "SlotAttention":
-            predicted_images, predicted_latents, _ = model(data)
 
         if (
             model.model_name
@@ -107,7 +104,7 @@ def one_epoch(
             ]
             and not unsupervised_mode
         ):
-            slots_loss, inds = matched_slots_loss(
+            slots_loss, inds = hungarian_slots_loss(
                 predicted_latents, true_latents, device, reduction=reduction
             )
             accum_slots_loss += slots_loss.item() / n_samples
@@ -123,12 +120,12 @@ def one_epoch(
             accum_reconstruction_loss += reconstruction_loss.item() / n_samples
 
         if (
-            model.model_name in ["SlotMLPAdditive"]
+            model.model_name in ["SlotMLPAdditive", "SlotAttention"]
             and mode == "train"
             and use_consistency_loss
         ):
-            consistency_loss, _ = matched_slots_loss(
-                z_hat, sampled_z, device, reduction=reduction
+            consistency_loss, _ = hungarian_slots_loss(
+                z_sampled, predicted_z_sampled, device, reduction=reduction
             )
             accum_consistency_loss += consistency_loss.item() / n_samples
 
@@ -145,10 +142,14 @@ def one_epoch(
             optimizer.step()
 
     print(
-        "====> Epoch: {} Average loss: {:.4f}, r2 score {:.4f}".format(
+        "====> Epoch: {} Average loss: {:.4f}, r2 score {:.4f} \n "
+        "       reconstruction loss {:.4f} consistency loss {:.4f} slots loss {:.4f}".format(
             epoch,
             accum_total_loss,
             accum_r2_score,
+            accum_reconstruction_loss,
+            accum_consistency_loss,
+            accum_slots_loss,
         )
     )
     if epoch % freq == 0:
@@ -307,17 +308,15 @@ def run(
         encoder = slot_attention.SlotAttentionEncoder(
             resolution=(64, 64), hid_dim=n_slot_latents
         ).to(device)
-
         decoder = slot_attention.SlotAttentionDecoder(
-            hid_dim=n_slot_latents, resolution=(64, 64), device=device
-        )
+            hid_dim=n_slot_latents, resolution=(64, 64)
+        ).to(device)
         model = slot_attention.SlotAttentionAutoEncoder(
             encoder=encoder,
             decoder=decoder,
             num_slots=n_slots,
             num_iterations=3,
             hid_dim=n_slot_latents,
-            device=device,
         ).to(device)
 
     wandb.watch(model)

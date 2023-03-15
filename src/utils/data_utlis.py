@@ -31,3 +31,15 @@ class PreGeneratedDataset(torch.utils.data.Dataset):
 
     def __getitem__(self, idx):
         return self.images[idx], self.latents[idx]
+
+class EvalDataset(torch.utils.data.Dataset):
+    def __init__(self, hZ, Z):
+      self.hz = hZ
+      self.z = Z
+    def __len__(self):
+        return len(self.hz)
+
+    def __getitem__(self, idx):
+        hz = self.hz[idx]
+        z = self.z[idx]
+        return hz, z
