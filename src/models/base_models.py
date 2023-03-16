@@ -164,6 +164,7 @@ class SlotMLPAdditive(torch.nn.Module):
                 x_sampled, figures_sampled = self.decoder(z_sampled)
 
             hat_z_sampled = self.encoder(x_sampled)
+
             return (
                 hat_x,
                 hat_z,

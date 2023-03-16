@@ -90,7 +90,6 @@ class SlotAttentionAutoEncoder(nn.Module):
 
         hat_x, figures = self.decode(hat_z)
 
-        # Compute consistency loss.
         if use_consistency_loss:
             z_sampled = sample_z_from_latents(hat_z.detach())
             if detached_latents:
