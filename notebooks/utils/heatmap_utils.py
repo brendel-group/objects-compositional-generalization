@@ -202,7 +202,7 @@ def get_id_bounds(x, y, shape):
 
 
 def plot_heatmap(
-    loss_arrays, left_line, right_line, save_name, shape=100, figsize=(12, 5)
+    loss_arrays, left_line, right_line, save_name, shape=100, figsize=(12, 5), show=True
 ):
     f, axs = plt.subplots(
         1,
@@ -251,4 +251,7 @@ def plot_heatmap(
         gs[i].set_yticks([])
 
     plt.savefig(f"{save_name}")
-    # plt.show()
+    if show:
+        plt.show()
+    else:
+        plt.close()

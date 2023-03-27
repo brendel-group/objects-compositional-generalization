@@ -148,6 +148,7 @@ def __make_histogram(log_dict, model, title):
         shape=n_steps,
         save_name=f"{wandb.run.name}.png",
         figsize=(6, 5),
+        show=False,
     )
 
     log_dict[f"{title}"] = [wandb.Image(f"{wandb.run.name}.png")]
