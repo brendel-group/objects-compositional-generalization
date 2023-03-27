@@ -55,13 +55,11 @@ class SlotMLPAdditiveDecoder(torch.nn.Module):
         self.model_name = "SlotMLPAdditiveDecoder"
 
     def forward(self, latents):
-        # image = torch.zeros_like(self.decoder(latents[0, 0]))
         image = 0
         figures = []
         for i in range(self.n_slots):
             figure = self.decoder(latents[:, i, :])
             image += figure
-            # models_utils.add_figures_with_obstruction(image, figure)
             figures.append(figure)
         return image, figures
 
@@ -140,7 +138,13 @@ class SlotMLPAdditive(torch.nn.Module):
         self.decoder = SlotMLPAdditiveDecoder(in_channels, n_slots, n_slot_latents)
         self.model_name = "SlotMLPAdditive"
 
-    def forward(self, x, use_consistency_loss=False, detached_latents=False):
+    def forward(
+        self,
+        x,
+        use_consistency_loss=False,
+        extended_consistency_loss=False,
+        detached_latents=False,
+    ):
         """
         Compute forward pass of the model.
         Reconstruction: \hat{x} = sum_{i=1}^{n_slots} f(z_i)
@@ -150,6 +154,7 @@ class SlotMLPAdditive(torch.nn.Module):
         Args:
             x: input image, of shape (batch_size, in_channels, height, width)
             use_consistency_loss: whether to use consistency loss
+            extended_consistency_loss: whether to use extended consistency loss
             detached_latents: whether to propagate gradients from consistency loss through decoder
         """
         hat_z = self.encoder(x)
@@ -164,7 +169,18 @@ class SlotMLPAdditive(torch.nn.Module):
                 x_sampled, figures_sampled = self.decoder(z_sampled)
 
             hat_z_sampled = self.encoder(x_sampled)
-
+            if extended_consistency_loss:
+                hat_x_sampled, _ = self.decoder(hat_z_sampled)
+                return (
+                    hat_x,
+                    hat_z,
+                    figures,
+                    x_sampled,
+                    hat_x_sampled,
+                    hat_z_sampled,
+                    figures_sampled,
+                    z_sampled,
+                )
             return (
                 hat_x,
                 hat_z,
@@ -174,8 +190,7 @@ class SlotMLPAdditive(torch.nn.Module):
                 figures_sampled,
                 z_sampled,
             )
-        else:
-            return hat_x, hat_z, figures
+        return hat_x, hat_z, figures
 
 
 class SlotMLPEncoder(torch.nn.Module):

@@ -84,7 +84,13 @@ class SlotAttentionAutoEncoder(nn.Module):
         ]
         return hat_x, figures
 
-    def forward(self, x, use_consistency_loss=False, detached_latents=False):
+    def forward(
+        self,
+        x,
+        use_consistency_loss=False,
+        extended_consistency_loss=False,
+        detached_latents=False,
+    ):
 
         hat_z = self.encode(x)
 
@@ -99,6 +105,18 @@ class SlotAttentionAutoEncoder(nn.Module):
                 x_sampled, figures_sampled = self.decode(z_sampled)
 
             hat_z_sampled = self.encode(x_sampled)
+            if extended_consistency_loss:
+                hat_x_sampled, _ = self.decode(hat_z_sampled)
+                return (
+                    hat_x,
+                    hat_z,
+                    figures,
+                    x_sampled,
+                    hat_x_sampled,
+                    hat_z_sampled,
+                    figures_sampled,
+                    z_sampled,
+                )
 
             return (
                 hat_x,
@@ -109,8 +127,7 @@ class SlotAttentionAutoEncoder(nn.Module):
                 figures_sampled,
                 z_sampled,
             )
-        else:
-            return hat_x, hat_z, figures
+        return hat_x, hat_z, figures
 
 
 class SlotAttention(nn.Module):

@@ -20,7 +20,7 @@ def sample_z_from_latents(latents):
     Returns:
         sampled_z: tensor of shape (batch_size, n_slots, n_latents)
     """
-    flattened_latents = latents.cpu().view(-1, latents.shape[-1])
+    flattened_latents = latents.view(-1, latents.shape[-1])
     sampled_z = torch.stack(
         [
             flattened_latents[
@@ -35,6 +35,7 @@ def sample_z_from_latents(latents):
         dim=1,
     )
     return sampled_z.to(latents.device)
+
 
 def set_seed(seed):
     """Set seed for reproducibility."""

@@ -1,14 +1,11 @@
 from typing import Tuple
 
 import numpy as np
-import sklearn
 import torch
+import tqdm
 from scipy.optimize import linear_sum_assignment
-from torch.utils.data import DataLoader
+from torch import nn
 from torchmetrics import R2Score
-
-from .utils.data_utlis import EvalDataset
-from .models.models_utils import MLP
 
 
 def r2_score(
@@ -77,7 +74,7 @@ def hungarian_slots_loss(
     # extracting the cost of the matched slots; this code is a bit ugly, idk what is the nice way to do it
     loss = torch.gather(pairwise_cost, 2, transposed_indices.to(device))[:, :, -1].sum(
         1
-    )
+    )  # sum along slots
 
     if reduction == "mean":
         loss = loss.mean()
@@ -89,96 +86,84 @@ def hungarian_slots_loss(
     return loss, transposed_indices
 
 
-def correlation(Z, hZ, num_slots, inf_slot_dim, gt_slot_dim, indices=None):
-    corr_cont = np.zeros((num_slots, num_slots))
-    corr_disc = np.zeros((num_slots, num_slots))
-
-    hZ = hZ.view(len(hZ), num_slots, inf_slot_dim).permute(1, 0, 2).cpu()
-    Z = Z.view(len(Z), num_slots, gt_slot_dim).permute(1, 0, 2).cpu()
-    Z_cont = Z[:, :, 0:4]
-    Z_disc = Z[:, :, 4]
-    for i in range(num_slots):
-        for j in range(num_slots):
-            ZS_cont = Z_cont[i]
-            ZS_disc = Z_disc[i]
-            hZS = hZ[j]
-            # if args.data != "synth":
-            if j > i:
-                hZS = hZS[indices[j]]
-                ZS_cont = ZS_cont[indices[j]]
-                ZS_disc = ZS_disc[indices[j]]
-            elif i >= j:
-                ZS_cont = ZS_cont[indices[i]]
-                ZS_disc = ZS_disc[indices[i]]
-                hZS = hZS[indices[i]]
-
-            scaler_Z = sklearn.preprocessing.StandardScaler()
-            scaler_hZ = sklearn.preprocessing.StandardScaler()
-            z_train_cont, z_eval_cont = np.split(
-                scaler_Z.fit_transform(ZS_cont), [int(0.8 * len(ZS_cont))]
-            )
-            z_train_disc, z_eval_disc = np.split(ZS_disc, [int(0.8 * len(ZS_disc))])
-            hz_train, hz_eval = np.split(
-                scaler_hZ.fit_transform(hZS), [int(0.8 * len(hZS))]
-            )
-
-            train_loader = DataLoader(
-                EvalDataset(torch.from_numpy(hz_train), torch.from_numpy(z_train_cont)),
-                batch_size=10,
-            )
-            corr_cont[i, j] = train_mlp_eval(
-                train_loader,
-                hz_eval,
-                z_eval_cont,
-                inf_slot_dim,
-                gt_slot_dim - 1,
-            )
-            train_loader = DataLoader(
-                EvalDataset(torch.from_numpy(hz_train), z_train_disc), batch_size=10
-            )
-            corr_disc[i, j] = train_mlp_eval(
-                train_loader, hz_eval, z_eval_disc, inf_slot_dim, 3, discrete=True
-            )
-    return corr_cont, corr_disc
-
-
-def train_mlp_eval(
-    train_loader, hZ_val, Z_val, inp_dim, out_dim, discrete=False, device="cuda"
+def identifiability_score(
+    model: torch.nn.Module,
+    latent_size: int,
+    train_loader: torch.utils.data.DataLoader,
+    test_id_loader: torch.utils.data.DataLoader,
+    test_ood_loader: torch.utils.data.DataLoader,
+    device: str = "cuda",
 ):
-    net = MLP(inp_dim, out_dim, hidden_dim=256, n_layers=3, nonlinear=True).to(device)
-    epoch = 0
-    optimizer = torch.optim.Adam(net.parameters(), lr=5e-4)
-    r2_best = 0.0
-    while epoch < 40:
-        epoch += 1
-        net.train()
-        if epoch == 25:
-            optimizer = torch.optim.Adam(net.parameters(), lr=5e-5)
-        for x, y in train_loader:
+    """
+    Calculates identifiability score for a model. Identifiability score is calculated as R2 score
+    between true and predicted latents after mapping true latents to predicted latents space using
+    MLP.
+
+    Args:
+        model: model to calculate identifiability score for
+        latent_size: size of latent space
+        train_loader: train loader
+        test_id_loader: test loader for in-distribution data
+        test_ood_loader: test loader for out-of-distribution data
+        device: device to run on
+
+    Returns:
+        (id_score, ood_score): identifiability score for in-distribution and out-of-distribution data
+    """
+
+    model.eval()
+    input_dim = train_loader.dataset[0][1].shape[1]
+    n_slots = train_loader.dataset[0][1].shape[0]
+
+    mlp = nn.Sequential(
+        nn.Linear(n_slots * input_dim, n_slots * input_dim * 2),
+        nn.ReLU(),
+        nn.Linear(n_slots * input_dim * 2, n_slots * input_dim * 2),
+        nn.ReLU(),
+        nn.Linear(n_slots * input_dim * 2, n_slots * input_dim * 2),
+        nn.ReLU(),
+        nn.Linear(n_slots * input_dim * 2, latent_size * n_slots),
+    ).to(device)
+
+    optimizer = torch.optim.Adam(mlp.parameters(), lr=1e-3)
+    criterion = nn.MSELoss()
+    best_id_scores = [torch.tensor(-torch.inf), torch.tensor(-torch.inf)]
+    for epoch in tqdm.tqdm(range(20)):
+        mlp.train()
+        for i, (images, true_latents) in enumerate(train_loader):
             optimizer.zero_grad()
-            yh = net(x.float().to(device))
-            if discrete:
-                loss_func = torch.nn.CrossEntropyLoss()
-                y = y - 1
-                loss = loss_func(yh, y.long().to(device))
-            else:
-                loss = (yh - y.float().to(device)).square().mean()
+            true_latents = true_latents.view(true_latents.shape[0], -1).to(device)
+            images = images.to(device)
+            _, predicted_latents, _ = model(images)
+            predicted_latents = predicted_latents.view(predicted_latents.shape[0], -1)
+
+            mapped_latents = mlp(true_latents)
+            loss = criterion(mapped_latents, predicted_latents)
             loss.backward()
             optimizer.step()
-        net.eval()
 
-        with torch.no_grad():
-            if discrete:
-                hz_pred = net(torch.from_numpy(hZ_val).float().to(device)).cpu()
-                y_pred_softmax = torch.log_softmax(hz_pred, dim=1)
-                _, y_pred_tags = torch.max(y_pred_softmax, dim=1)
-                correct_pred = (y_pred_tags == Z_val - 1).float()
-                r2 = correct_pred.sum() / len(correct_pred)
-                r2 = r2.item()
-            else:
-                hz_pred = net(torch.from_numpy(hZ_val).float().to(device)).cpu()
-                r2 = sklearn.metrics.r2_score(torch.from_numpy(Z_val).float(), hz_pred)
+        mlp.eval()
+        id_scores = []
+        for loader in [test_id_loader, test_ood_loader]:
+            r2_scores = []
+            __r2 = R2Score(latent_size * n_slots).to(device)
+            for i, (images, true_latents) in enumerate(loader):
+                true_latents = true_latents.view(true_latents.shape[0], -1).to(device)
+                images = images.to(device)
+                _, predicted_latents, _ = model(images)
+                predicted_latents = predicted_latents.view(
+                    predicted_latents.shape[0], -1
+                )
 
-            if r2_best < r2:
-                r2_best = r2
-    return r2_best
+                mapped_latents = mlp(true_latents)
+                r2 = __r2(mapped_latents, predicted_latents)
+                r2_scores.append(r2.cpu().detach())
+
+            id_scores.append(torch.mean(torch.stack(r2_scores)))
+
+        if id_scores[0] > best_id_scores[0]:
+            best_id_scores[0] = id_scores[0]
+        if id_scores[1] > best_id_scores[1]:
+            best_id_scores[1] = id_scores[1]
+
+    return best_id_scores[0].item(), best_id_scores[1].item()

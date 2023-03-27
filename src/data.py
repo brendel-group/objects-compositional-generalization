@@ -1,13 +1,13 @@
 import warnings
-from typing import Optional, Callable
+from typing import Callable, Optional
 
 import numpy as np
 import torch
 import tqdm
 from spriteworld import environment, renderers, sprite, tasks
 
-from .utils import sampling_utils
 from .config import Config, SpriteWorldConfig
+from .utils import sampling_utils
 
 warnings.filterwarnings("ignore", module="spriteworld")
 

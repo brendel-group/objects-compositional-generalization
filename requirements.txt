@@ -3,6 +3,8 @@ torch
 torchvision
 torchaudio
 numpy
+pandas
+seaborn
 scipy
 torchmetrics
 spriteworld

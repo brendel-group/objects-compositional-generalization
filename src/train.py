@@ -5,24 +5,19 @@ import torch
 import torch.nn.functional as F
 import torch.utils.data
 import torchvision.transforms as transforms
+
 import wandb
 
+#TODO: remove this
 wandb.login(key="b17ca470c2ce70dd9d6c3ce01c6fc7656633fe91")
 
-from . import config
-from . import data
-from .models import base_models
-from .models import slot_attention
-
-from src.utils.training_utils import (
-    collate_fn_normalizer,
-    set_seed,
-)
-from .metrics import r2_score, hungarian_slots_loss
-
+import src.metrics as metrics
+import src.utils.data_utils as data_utils
+import src.utils.training_utils as training_utils
 from src.utils.wandb_utils import wandb_log
 
-from src.utils.data_utlis import dump_generated_dataset, PreGeneratedDataset
+from . import config, data
+from .models import base_models, slot_attention
 
 
 def one_epoch(
@@ -35,7 +30,10 @@ def one_epoch(
     reduction="sum",
     reconstruction_term_weight=1,
     consistency_term_weight=1,
+    consistency_scheduler=False,
+    consistency_scheduler_step=200,
     use_consistency_loss=True,
+    extended_consistency_loss=False,
     detached_latents=False,
     unsupervised_mode=False,
     freq=10,
@@ -54,7 +52,7 @@ def one_epoch(
     accum_reconstruction_loss = 0
     accum_r2_score = 0
     per_latent_r2_score = 0
-    for batch_idx, (data, true_latents) in enumerate(dataloader):
+    for batch_idx, (images, true_latents) in enumerate(dataloader):
         reconstruction_loss = 0
         slots_loss = 0
         consistency_loss = 0
@@ -63,16 +61,33 @@ def one_epoch(
         sampled_images = None
         sampled_figures = None
 
-        data = data.to(device)
+        images = images.to(device)
         true_latents = true_latents.to(device)
 
         if mode == "train":
             optimizer.zero_grad()
 
+        # adapted calls for different models
         if model.model_name == "SlotMLPMonolithic":
-            predicted_images, predicted_latents = model(data)
+            predicted_images, predicted_latents = model(images)
         elif model.model_name in ["SlotMLPAdditive", "SlotAttention"]:
-            if mode == "train" and use_consistency_loss:
+            if mode == "train" and use_consistency_loss and extended_consistency_loss:
+                (
+                    predicted_images,
+                    predicted_latents,
+                    predicted_figures,
+                    sampled_images,
+                    predicted_sampled_images,
+                    predicted_z_sampled,
+                    sampled_figures,
+                    z_sampled,
+                ) = model(
+                    images,
+                    use_consistency_loss=use_consistency_loss,
+                    extended_consistency_loss=extended_consistency_loss,
+                    detached_latents=detached_latents,
+                )
+            elif mode == "train" and use_consistency_loss:
                 (
                     predicted_images,
                     predicted_latents,
@@ -82,19 +97,21 @@ def one_epoch(
                     sampled_figures,
                     z_sampled,
                 ) = model(
-                    data,
+                    images,
                     use_consistency_loss=use_consistency_loss,
-                    detached_latents=(detached_latents and not unsupervised_mode),
+                    extended_consistency_loss=extended_consistency_loss,
+                    detached_latents=detached_latents,
                 )
             else:
-                predicted_images, predicted_latents, predicted_figures = model(data)
+                predicted_images, predicted_latents, predicted_figures = model(images)
         elif model.model_name == "SlotMLPEncoder":
-            predicted_latents = model(data)
+            predicted_latents = model(images)
         elif model.model_name == "SlotMLPAdditiveDecoder":
             predicted_images, predicted_figures = model(true_latents)
         elif model.model_name == "SlotMLPMonolithicDecoder":
             predicted_images = model(true_latents)
 
+        # calculate slots loss and r2 score for supervised models
         if (
             model.model_name
             not in [
@@ -104,43 +121,62 @@ def one_epoch(
             ]
             and not unsupervised_mode
         ):
-            slots_loss, inds = hungarian_slots_loss(
-                predicted_latents, true_latents, device, reduction=reduction
+            slots_loss, inds = metrics.hungarian_slots_loss(
+                true_latents, predicted_latents, device, reduction=reduction
             )
             accum_slots_loss += slots_loss.item() / n_samples
 
-            avg_r2, raw_r2 = r2_score(true_latents, predicted_latents, inds)
-            accum_r2_score += avg_r2 * len(data) / n_samples
-            per_latent_r2_score += raw_r2 * len(data) / n_samples
+            avg_r2, raw_r2 = metrics.r2_score(true_latents, predicted_latents, inds)
+            accum_r2_score += avg_r2 * len(images) / n_samples
+            per_latent_r2_score += raw_r2 * len(images) / n_samples
 
+        # calculate reconstruction loss for all models with decoder
         if model.model_name != "SlotMLPEncoder":
             reconstruction_loss = F.mse_loss(
-                predicted_images, data, reduction=reduction
+                predicted_images, images, reduction=reduction
             )
             accum_reconstruction_loss += reconstruction_loss.item() / n_samples
 
+        # calculate consistency loss
         if (
             model.model_name in ["SlotMLPAdditive", "SlotAttention"]
             and mode == "train"
             and use_consistency_loss
         ):
-            consistency_loss, _ = hungarian_slots_loss(
+            consistency_encoder_loss, _ = metrics.hungarian_slots_loss(
                 z_sampled, predicted_z_sampled, device, reduction=reduction
             )
-            accum_consistency_loss += consistency_loss.item() / n_samples
+            consistency_decoder_loss = F.mse_loss(
+                predicted_sampled_images, sampled_images, reduction=reduction
+            )
+            accum_consistency_loss += (
+                consistency_encoder_loss + consistency_decoder_loss
+            ).item() / n_samples
 
+            consistency_loss = (
+                consistency_encoder_loss
+                + consistency_decoder_loss * reconstruction_term_weight
+            )
+            if consistency_scheduler:
+                consistency_loss *= min(
+                    consistency_term_weight, epoch / consistency_scheduler_step
+                )
+            else:
+                consistency_loss *= consistency_term_weight
+
+        # calculate total loss
         total_loss = (
             reconstruction_loss * reconstruction_term_weight
             + slots_loss
-            + consistency_loss * consistency_term_weight
+            + consistency_loss
         )
-
         accum_total_loss += total_loss.item() / n_samples
 
         if mode == "train":
             total_loss.backward()
             optimizer.step()
 
+    # logging utils
     print(
         "====> Epoch: {} Average loss: {:.4f}, r2 score {:.4f} \n "
         "       reconstruction loss {:.4f} consistency loss {:.4f} slots loss {:.4f}".format(
@@ -154,6 +190,7 @@ def one_epoch(
     )
     if epoch % freq == 0:
         wandb_log(
+            model,
             mode,
             epoch,
             freq,
@@ -162,7 +199,7 @@ def one_epoch(
             reconstruction_loss=accum_reconstruction_loss,
             r2_score=accum_r2_score,
             r2_score_raw=per_latent_r2_score,
-            true_images=data,
+            true_images=images,
             predicted_images=predicted_images,
             predicted_figures=predicted_figures,
             consistency_loss=accum_consistency_loss,
@@ -190,7 +227,10 @@ def run(
     reduction,
     reconstruction_term_weight,
     consistency_term_weight,
+    consistency_scheduler,
+    consistency_scheduler_step,
     use_consistency_loss,
+    extended_consistency_loss,
     warmup,
     unsupervised_mode,
     detached_latents,
@@ -203,7 +243,6 @@ def run(
     sample_mode_test_id,
     sample_mode_test_ood,
     delta,
-    in_channels,
     seed,
 ):
     """
@@ -220,7 +259,10 @@ def run(
         reduction: Reduction to use for loss. Either "sum" or "mean".
         reconstruction_term_weight: Weight for reconstruction term in total loss.
         consistency_term_weight: Weight for consistency term in total loss.
+        consistency_scheduler: Whether to use consistency scheduler min(consistency_term_weight, epoch / 200).
+        consistency_scheduler_step: How often to decrease consistency term weight.
         use_consistency_loss: Whether to use consistency loss.
+        extended_consistency_loss: Whether to use extended consistency loss.
         warmup: Whether to use warmup.
         unsupervised_mode: Turns model to Autoencoder mode (no slots loss).
         detached_latents: Detach latents from encoder or not.
@@ -233,36 +275,9 @@ def run(
         sample_mode_test_id: Sampling mode for ID testing dataset.
         sample_mode_test_ood: Sampling mode for OOD testing dataset.
         delta: Delta for "diagonal" and "off_diagonal" dataset.
-        in_channels: Number of channels in input image.
         seed: Random seed to use.
     """
-    wandb_config = {
-        "model_name": model_name,
-        "device": device,
-        "epochs": epochs,
-        "batch_size": batch_size,
-        "lr": lr,
-        "weight_decay": weight_decay,
-        "lr_scheduler_step": lr_scheduler_step,
-        "reduction": reduction,
-        "reconstruction_term_weight": reconstruction_term_weight,
-        "consistency_term_weight": consistency_term_weight,
-        "use_consistency_loss": use_consistency_loss,
-        "warmup": warmup,
-        "unsupervised_mode": unsupervised_mode,
-        "detached_latents": detached_latents,
-        "n_samples_train": n_samples_train,
-        "n_samples_test": n_samples_test,
-        "n_slots": n_slots,
-        "n_slot_latents": n_slot_latents,
-        "no_overlap": no_overlap,
-        "sample_mode_train": sample_mode_train,
-        "sample_mode_test_id": sample_mode_test_id,
-        "sample_mode_test_ood": sample_mode_test_ood,
-        "delta": delta,
-        "in_channels": in_channels,
-        "seed": seed,
-    }
+    wandb_config = locals()
     wandb.init(config=wandb_config, project="object_centric_ood")
     time_created = time.strftime("%Y-%m-%d_%H-%M-%S", time.localtime())
 
@@ -270,7 +285,7 @@ def run(
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print("Using device:", device)
 
-    set_seed(seed)
+    training_utils.set_seed(seed)
 
     cfg = config.SpriteWorldConfig()
     min_offset = torch.FloatTensor(
@@ -284,6 +299,7 @@ def run(
     min_offset = torch.cat([min_offset[:, :, :-4], min_offset[:, :, -3:-2]], dim=-1)
     scale = torch.cat([scale[:, :, :-4], scale[:, :, -3:-2]], dim=-1)
 
+    in_channels = 3
     if model_name == "SlotMLPAdditive":
         model = base_models.SlotMLPAdditive(in_channels, n_slots, n_slot_latents).to(
             device
@@ -331,7 +347,7 @@ def run(
     os.path.isdir(path)
 
     if load and os.path.isdir(os.path.join(path, "train")):
-        train_dataset = PreGeneratedDataset(os.path.join(path, "train"))
+        train_dataset = data_utils.PreGeneratedDataset(os.path.join(path, "train"))
         print("Train dataset successfully loaded from disk.")
     else:
         train_dataset = data.SpriteWorldDataset(
@@ -344,10 +360,12 @@ def run(
             transform=transform,
         )
         if save:
-            dump_generated_dataset(train_dataset, os.path.join(path, "train"))
+            data_utils.dump_generated_dataset(
+                train_dataset, os.path.join(path, "train")
+            )
 
     if load and os.path.isdir(os.path.join(path, "test_id")):
-        test_dataset_id = PreGeneratedDataset(os.path.join(path, "test_id"))
+        test_dataset_id = data_utils.PreGeneratedDataset(os.path.join(path, "test_id"))
         print("Test ID dataset successfully loaded from disk.")
     else:
         test_dataset_id = data.SpriteWorldDataset(
@@ -360,10 +378,14 @@ def run(
             transform=transform,
         )
         if save:
-            dump_generated_dataset(test_dataset_id, os.path.join(path, "test_id"))
+            data_utils.dump_generated_dataset(
+                test_dataset_id, os.path.join(path, "test_id")
+            )
 
     if load and os.path.isdir(os.path.join(path, "test_ood")):
-        test_dataset_ood = PreGeneratedDataset(os.path.join(path, "test_ood"))
+        test_dataset_ood = data_utils.PreGeneratedDataset(
+            os.path.join(path, "test_ood")
+        )
         print("Test OOD dataset successfully loaded from disk.")
     else:
         test_dataset_ood = data.SpriteWorldDataset(
@@ -376,34 +398,36 @@ def run(
             transform=transform,
         )
         if save:
-            dump_generated_dataset(test_dataset_ood, os.path.join(path, "test_ood"))
+            data_utils.dump_generated_dataset(
+                test_dataset_ood, os.path.join(path, "test_ood")
+            )
 
     # dataloaders
     train_loader = torch.utils.data.DataLoader(
         train_dataset,
         batch_size=batch_size,
         shuffle=True,
-        collate_fn=lambda b: collate_fn_normalizer(b, min_offset, scale),
+        collate_fn=lambda b: training_utils.collate_fn_normalizer(b, min_offset, scale),
     )
     test_loader_id = torch.utils.data.DataLoader(
         test_dataset_id,
         batch_size=batch_size,
         shuffle=False,
-        collate_fn=lambda b: collate_fn_normalizer(b, min_offset, scale),
+        collate_fn=lambda b: training_utils.collate_fn_normalizer(b, min_offset, scale),
     )
     test_loader_ood = torch.utils.data.DataLoader(
         test_dataset_ood,
         batch_size=batch_size,
         shuffle=False,
-        collate_fn=lambda b: collate_fn_normalizer(b, min_offset, scale),
+        collate_fn=lambda b: training_utils.collate_fn_normalizer(b, min_offset, scale),
     )
 
     min_reconstruction_loss_ID = float("inf")
     min_reconstruction_loss_OOD = float("inf")
 
-    # lr=5e-6 for warming up
+    # lr=1e-6 for warming up
     if warmup:
-        init_lr = 5e-6
+        init_lr = 1e-6
     else:
         init_lr = lr
 
@@ -429,7 +453,10 @@ def run(
             reduction=reduction,
             reconstruction_term_weight=reconstruction_term_weight,
             consistency_term_weight=consistency_term_weight,
+            consistency_scheduler=consistency_scheduler,
+            consistency_scheduler_step=consistency_scheduler_step,
             use_consistency_loss=use_consistency_loss,
+            extended_consistency_loss=extended_consistency_loss,
             unsupervised_mode=unsupervised_mode,
             detached_latents=detached_latents,
         )
@@ -447,6 +474,24 @@ def run(
         print("Learning rate: ", optimizer.param_groups[0]["lr"])
 
         if epoch % 20 == 0:
+            # if model_name in ["SlotAttention", "SlotMLPAdditive"]:
+            #     id_score_id, id_score_ood = metrics.identifiability_score(
+            #         model,
+            #         n_slot_latents,
+            #         train_loader,
+            #         test_loader_id,
+            #         test_loader_ood,
+            #         device,
+            #     )
+            #     wandb.log(
+            #         {
+            #             "ID_score_ID": id_score_id,
+            #             "ID_score_OOD": id_score_ood,
+            #         },
+            #         step=epoch,
+            #     )
+            #     print("ID score ID: ", id_score_id)
+            #     print("ID score OOD: ", id_score_ood)
             (
                 id_total_loss,
                 id_reconstruction_loss,
