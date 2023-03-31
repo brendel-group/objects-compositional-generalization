@@ -1,14 +1,13 @@
 """
 Slot Attention-based auto-encoder for object discovery. Code provided by Jack Brady.
 """
-from torch import nn
-import torch
-import torch.nn.functional as F
+from contextlib import nullcontext
 
 import numpy as np
-from src.utils.training_utils import (
-    sample_z_from_latents,
-)
+import torch
+import torch.nn.functional as F
+from src.utils.training_utils import sample_z_from_latents
+from torch import nn
 
 
 class SlotAttentionAutoEncoder(nn.Module):
@@ -91,33 +90,18 @@ class SlotAttentionAutoEncoder(nn.Module):
         extended_consistency_loss=False,
         detached_latents=False,
     ):
-
         hat_z = self.encode(x)
-
         hat_x, figures = self.decode(hat_z)
 
-        if use_consistency_loss:
+        # we always want to look at the consistency loss, but we not always want to backpropagate through consistency part
+        with nullcontext() if not use_consistency_loss else torch.no_grad():
             z_sampled = sample_z_from_latents(hat_z.detach())
-            if detached_latents:
-                with torch.no_grad():
-                    x_sampled, figures_sampled = self.decode(z_sampled)
-            else:
+            with torch.no_grad() if detached_latents else nullcontext():
                 x_sampled, figures_sampled = self.decode(z_sampled)
 
             hat_z_sampled = self.encode(x_sampled)
-            if extended_consistency_loss:
+            with nullcontext() if extended_consistency_loss else torch.no_grad():
                 hat_x_sampled, _ = self.decode(hat_z_sampled)
-                return (
-                    hat_x,
-                    hat_z,
-                    figures,
-                    x_sampled,
-                    hat_x_sampled,
-                    hat_z_sampled,
-                    figures_sampled,
-                    z_sampled,
-                )
-
             return (
                 hat_x,
                 hat_z,
@@ -126,8 +110,8 @@ class SlotAttentionAutoEncoder(nn.Module):
                 hat_z_sampled,
                 figures_sampled,
                 z_sampled,
+                hat_x_sampled,
             )
-        return hat_x, hat_z, figures
 
 
 class SlotAttention(nn.Module):

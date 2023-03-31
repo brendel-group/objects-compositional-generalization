@@ -1,10 +1,10 @@
+from contextlib import nullcontext
+from typing import List, Tuple
+
 import torch
+from src.utils.training_utils import sample_z_from_latents
 
 from . import models_utils
-
-from src.utils.training_utils import (
-    sample_z_from_latents,
-)
 
 
 class SlotEncoder(torch.nn.Module):
@@ -144,7 +144,16 @@ class SlotMLPAdditive(torch.nn.Module):
         use_consistency_loss=False,
         extended_consistency_loss=False,
         detached_latents=False,
-    ):
+    ) -> Tuple[
+        torch.Tensor,
+        torch.Tensor,
+        List[torch.Tensor],
+        torch.Tensor,
+        torch.Tensor,
+        List[torch.Tensor],
+        torch.Tensor,
+        torch.Tensor,
+    ]:
         """
         Compute forward pass of the model.
         Reconstruction: \hat{x} = sum_{i=1}^{n_slots} f(z_i)
@@ -156,41 +165,41 @@ class SlotMLPAdditive(torch.nn.Module):
             use_consistency_loss: whether to use consistency loss
             extended_consistency_loss: whether to use extended consistency loss
             detached_latents: whether to propagate gradients from consistency loss through decoder
+
+        Returns:
+            A tuple containing the following:
+                - hat_x: reconstructed input image
+                - hat_z: latent vectors for input image
+                - figures: figures visualizing each latent vector
+                - x_sampled: input image sampled from latent vectors
+                - hat_z_sampled: latent vectors for sampled input image
+                - figures_sampled: figures visualizing each latent vector for sampled input image
+                - z_sampled: sampled latent vectors
+                - hat_x_sampled: reconstructed sampled input image
         """
         hat_z = self.encoder(x)
         hat_x, figures = self.decoder(hat_z)
 
-        if use_consistency_loss:
+        # we always want to look at the consistency loss, but we not always want to backpropagate through consistency part
+        with nullcontext() if use_consistency_loss else torch.no_grad():
             z_sampled = sample_z_from_latents(hat_z.detach())
-            if detached_latents:
-                with torch.no_grad():
-                    x_sampled, figures_sampled = self.decoder(z_sampled)
-            else:
+            with torch.no_grad() if detached_latents else nullcontext():
                 x_sampled, figures_sampled = self.decoder(z_sampled)
 
             hat_z_sampled = self.encoder(x_sampled)
-            if extended_consistency_loss:
+            with nullcontext() if extended_consistency_loss else torch.no_grad():
                 hat_x_sampled, _ = self.decoder(hat_z_sampled)
-                return (
-                    hat_x,
-                    hat_z,
-                    figures,
-                    x_sampled,
-                    hat_x_sampled,
-                    hat_z_sampled,
-                    figures_sampled,
-                    z_sampled,
-                )
-            return (
-                hat_x,
-                hat_z,
-                figures,
-                x_sampled,
-                hat_z_sampled,
-                figures_sampled,
-                z_sampled,
-            )
-        return hat_x, hat_z, figures
+
+        return (
+            hat_x,
+            hat_z,
+            figures,
+            x_sampled,
+            hat_z_sampled,
+            figures_sampled,
+            z_sampled,
+            hat_x_sampled,
+        )
 
 
 class SlotMLPEncoder(torch.nn.Module):

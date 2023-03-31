@@ -36,7 +36,8 @@ def wandb_log(
     true_images=None,
     predicted_images=None,
     predicted_figures=None,
-    consistency_loss=None,
+    consistency_encoder_loss=None,
+    consistency_decoder_loss=None,
     sampled_images=None,
     sampled_figures=None,
 ):
@@ -69,8 +70,11 @@ def wandb_log(
     if total_loss is not None:
         log_dict[f"{mode} total loss"] = total_loss
 
-    if consistency_loss is not None:
-        log_dict[f"{mode} consistency loss"] = consistency_loss
+    if consistency_encoder_loss is not None:
+        log_dict[f"{mode} consistency encoder loss"] = consistency_encoder_loss
+
+    if consistency_decoder_loss is not None:
+        log_dict[f"{mode} consistency decoder loss"] = consistency_decoder_loss
 
     if sampled_images is not None and epoch % freq == 0:
         __log_images(log_dict, sampled_images, f"{mode} sampled")
@@ -129,7 +133,8 @@ def __make_histogram(log_dict, model, title):
     model.eval()
     for (image, _) in heatmap_loader:
         image = image.to("cuda")
-        pred_image, latents, _ = model(image)
+        output = model(image)
+        pred_image, latents = output[0], output[1]
 
         loss_array = torch.cat(
             [loss_array, torch.square(image.cpu() - pred_image.cpu()).detach()]
@@ -151,4 +156,4 @@ def __make_histogram(log_dict, model, title):
         show=False,
     )
 
-    log_dict[f"{title}"] = [wandb.Image(f"{wandb.run.name}.png")]
+    log_dict[f"{title}"] = [wandb.Image(f"heatmaps/{wandb.run.name}.png")]

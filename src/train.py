@@ -8,7 +8,7 @@ import torchvision.transforms as transforms
 
 import wandb
 
-#TODO: remove this
+# TODO: remove this
 wandb.login(key="b17ca470c2ce70dd9d6c3ce01c6fc7656633fe91")
 
 import src.metrics as metrics
@@ -25,11 +25,12 @@ def one_epoch(
     dataloader,
     optimizer,
     device,
-    mode="train",
-    epoch=0,
+    mode,
+    epoch,
     reduction="sum",
     reconstruction_term_weight=1,
     consistency_term_weight=1,
+    consistency_encoder_term_weight=1,
     consistency_scheduler=False,
     consistency_scheduler_step=200,
     use_consistency_loss=True,
@@ -48,14 +49,14 @@ def one_epoch(
 
     accum_total_loss = 0
     accum_slots_loss = 0
-    accum_consistency_loss = 0
+    accum_encoder_consistency_loss = 0
+    accum_decoder_consistency_loss = 0
     accum_reconstruction_loss = 0
     accum_r2_score = 0
     per_latent_r2_score = 0
     for batch_idx, (images, true_latents) in enumerate(dataloader):
-        reconstruction_loss = 0
-        slots_loss = 0
-        consistency_loss = 0
+        total_loss = torch.tensor(0.0, device=device)
+        consistency_decoder_loss = torch.tensor(0.0, device=device)
         predicted_figures = None
         predicted_images = None
         sampled_images = None
@@ -71,39 +72,21 @@ def one_epoch(
         if model.model_name == "SlotMLPMonolithic":
             predicted_images, predicted_latents = model(images)
         elif model.model_name in ["SlotMLPAdditive", "SlotAttention"]:
-            if mode == "train" and use_consistency_loss and extended_consistency_loss:
-                (
-                    predicted_images,
-                    predicted_latents,
-                    predicted_figures,
-                    sampled_images,
-                    predicted_sampled_images,
-                    predicted_z_sampled,
-                    sampled_figures,
-                    z_sampled,
-                ) = model(
-                    images,
-                    use_consistency_loss=use_consistency_loss,
-                    extended_consistency_loss=extended_consistency_loss,
-                    detached_latents=detached_latents,
-                )
-            elif mode == "train" and use_consistency_loss:
-                (
-                    predicted_images,
-                    predicted_latents,
-                    predicted_figures,
-                    sampled_images,
-                    predicted_z_sampled,
-                    sampled_figures,
-                    z_sampled,
-                ) = model(
-                    images,
-                    use_consistency_loss=use_consistency_loss,
-                    extended_consistency_loss=extended_consistency_loss,
-                    detached_latents=detached_latents,
-                )
-            else:
-                predicted_images, predicted_latents, predicted_figures = model(images)
+            (
+                predicted_images,
+                predicted_latents,
+                predicted_figures,
+                sampled_images,
+                predicted_z_sampled,
+                sampled_figures,
+                z_sampled,
+                predicted_sampled_images,
+            ) = model(
+                images,
+                use_consistency_loss=use_consistency_loss,
+                extended_consistency_loss=extended_consistency_loss,
+                detached_latents=detached_latents,
+            )
         elif model.model_name == "SlotMLPEncoder":
             predicted_latents = model(images)
         elif model.model_name == "SlotMLPAdditiveDecoder":
@@ -117,7 +100,6 @@ def one_epoch(
             not in [
                 "SlotMLPAdditiveDecoder",
                 "SlotMLPMonolithicDecoder",
-                "SlotAttention",
             ]
             and not unsupervised_mode
         ):
@@ -130,6 +112,9 @@ def one_epoch(
             accum_r2_score += avg_r2 * len(images) / n_samples
             per_latent_r2_score += raw_r2 * len(images) / n_samples
 
+            # add to total loss
+            total_loss += slots_loss
+
         # calculate reconstruction loss for all models with decoder
         if model.model_name != "SlotMLPEncoder":
             reconstruction_loss = F.mse_loss(
@@ -137,26 +122,34 @@ def one_epoch(
             )
             accum_reconstruction_loss += reconstruction_loss.item() / n_samples
 
+            # add to total loss
+            total_loss += reconstruction_loss * reconstruction_term_weight
+
         # calculate consistency loss
-        if (
-            model.model_name in ["SlotMLPAdditive", "SlotAttention"]
-            and mode == "train"
-            and use_consistency_loss
-        ):
+        if model.model_name in ["SlotMLPAdditive", "SlotAttention"]:
             consistency_encoder_loss, _ = metrics.hungarian_slots_loss(
                 z_sampled, predicted_z_sampled, device, reduction=reduction
             )
+            accum_encoder_consistency_loss += (
+                consistency_encoder_loss.item() / n_samples
+            )
+
             consistency_decoder_loss = F.mse_loss(
                 predicted_sampled_images, sampled_images, reduction=reduction
             )
-            accum_consistency_loss += (
-                consistency_encoder_loss + consistency_decoder_loss
-            ).item() / n_samples
+            accum_decoder_consistency_loss += (
+                consistency_decoder_loss.item() / n_samples
+            )
 
             consistency_loss = (
-                consistency_encoder_loss
-                + consistency_decoder_loss * reconstruction_term_weight
+                consistency_encoder_loss * consistency_encoder_term_weight
             )
+            # add to consistency loss only if extended_consistency_loss is True
+            if extended_consistency_loss:
+                consistency_loss += (
+                    consistency_decoder_loss * reconstruction_term_weight
+                )
+
             if consistency_scheduler:
                 consistency_loss *= min(
                     consistency_term_weight, epoch / consistency_scheduler_step
@@ -164,14 +157,11 @@ def one_epoch(
             else:
                 consistency_loss *= consistency_term_weight
 
-        # calculate total loss
-        total_loss = (
-            reconstruction_loss * reconstruction_term_weight
-            + slots_loss
-            + consistency_loss
-        )
-        accum_total_loss += total_loss.item() / n_samples
+            if use_consistency_loss:
+                # add to total loss
+                total_loss += consistency_loss
 
+        accum_total_loss += total_loss.item() / n_samples
         if mode == "train":
             total_loss.backward()
             optimizer.step()
@@ -179,13 +169,15 @@ def one_epoch(
     # logging utils
     print(
         "====> Epoch: {} Average loss: {:.4f}, r2 score {:.4f} \n "
-        "       reconstruction loss {:.4f} consistency loss {:.4f} slots loss {:.4f}".format(
+        "       reconstruction loss {:.4f} slots loss {:.4f} \n "
+        "       consistency encoder loss {:.4f} consistency decoder loss {:.4f}".format(
             epoch,
             accum_total_loss,
             accum_r2_score,
             accum_reconstruction_loss,
-            accum_consistency_loss,
             accum_slots_loss,
+            accum_encoder_consistency_loss,
+            accum_decoder_consistency_loss,
         )
     )
     if epoch % freq == 0:
@@ -202,7 +194,8 @@ def one_epoch(
             true_images=images,
             predicted_images=predicted_images,
             predicted_figures=predicted_figures,
-            consistency_loss=accum_consistency_loss,
+            consistency_encoder_loss=accum_encoder_consistency_loss,
+            consistency_decoder_loss=accum_decoder_consistency_loss,
             sampled_images=sampled_images,
             sampled_figures=sampled_figures,
         )
@@ -227,6 +220,7 @@ def run(
     reduction,
     reconstruction_term_weight,
     consistency_term_weight,
+    consistency_encoder_term_weight,
     consistency_scheduler,
     consistency_scheduler_step,
     use_consistency_loss,
@@ -258,7 +252,8 @@ def run(
         lr_scheduler_step: How often to decrease learning rate.
         reduction: Reduction to use for loss. Either "sum" or "mean".
         reconstruction_term_weight: Weight for reconstruction term in total loss.
-        consistency_term_weight: Weight for consistency term in total loss.
+        consistency_term_weight: Weight for consistency term in consistency loss.
+        consistency_encoder_term_weight: Weight for consistency term in
         consistency_scheduler: Whether to use consistency scheduler min(consistency_term_weight, epoch / 200).
         consistency_scheduler_step: How often to decrease consistency term weight.
         use_consistency_loss: Whether to use consistency loss.
@@ -279,6 +274,9 @@ def run(
     """
     wandb_config = locals()
     wandb.init(config=wandb_config, project="object_centric_ood")
+    wandb.define_metric("test_ID reconstruction loss", summary="min")
+    wandb.define_metric("test_OOD reconstruction loss", summary="min")
+
     time_created = time.strftime("%Y-%m-%d_%H-%M-%S", time.localtime())
 
     if device == "cuda":
@@ -453,6 +451,7 @@ def run(
             reduction=reduction,
             reconstruction_term_weight=reconstruction_term_weight,
             consistency_term_weight=consistency_term_weight,
+            consistency_encoder_term_weight=consistency_encoder_term_weight,
             consistency_scheduler=consistency_scheduler,
             consistency_scheduler_step=consistency_scheduler_step,
             use_consistency_loss=use_consistency_loss,

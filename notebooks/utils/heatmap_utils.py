@@ -1,3 +1,4 @@
+import os
 import random
 
 import matplotlib.pyplot as plt
@@ -250,7 +251,9 @@ def plot_heatmap(
         gs[i].set_xticks([])
         gs[i].set_yticks([])
 
-    plt.savefig(f"{save_name}")
+    folder_name = "heatmaps"
+    os.makedirs(folder_name, exist_ok=True)
+    plt.savefig(f"{folder_name}/{save_name}")
     if show:
         plt.show()
     else:

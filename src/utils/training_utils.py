@@ -20,20 +20,23 @@ def sample_z_from_latents(latents):
     Returns:
         sampled_z: tensor of shape (batch_size, n_slots, n_latents)
     """
-    flattened_latents = latents.view(-1, latents.shape[-1])
-    sampled_z = torch.stack(
-        [
-            flattened_latents[
-                np.random.choice(
-                    len(flattened_latents),
-                    size=len(latents),
-                ),
-                :,
-            ]
-            for _ in range(latents.shape[1])
-        ],
-        dim=1,
+    batch_size, n_slots, n_latents = latents.shape
+
+    # Flatten the latents tensor into a 2D tensor
+    flattened_latents = latents.view(batch_size * n_slots, n_latents)
+
+    # Sample indices randomly with replacement from the flattened latents tensor
+    indices = np.random.choice(
+        len(flattened_latents),
+        size=batch_size * n_slots,
     )
+
+    # Gather the sampled latents from the flattened tensor
+    sampled_latents = flattened_latents[indices]
+
+    # Reshape the sampled latents tensor back to the original shape
+    sampled_z = sampled_latents.view(batch_size, n_slots, n_latents)
+
     return sampled_z.to(latents.device)
 
 
