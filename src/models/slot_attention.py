@@ -94,7 +94,7 @@ class SlotAttentionAutoEncoder(nn.Module):
         hat_x, figures = self.decode(hat_z)
 
         # we always want to look at the consistency loss, but we not always want to backpropagate through consistency part
-        with nullcontext() if not use_consistency_loss else torch.no_grad():
+        with nullcontext() if use_consistency_loss else torch.no_grad():
             z_sampled = sample_z_from_latents(hat_z.detach())
             with torch.no_grad() if detached_latents else nullcontext():
                 x_sampled, figures_sampled = self.decode(z_sampled)
@@ -102,6 +102,7 @@ class SlotAttentionAutoEncoder(nn.Module):
             hat_z_sampled = self.encode(x_sampled)
             with nullcontext() if extended_consistency_loss else torch.no_grad():
                 hat_x_sampled, _ = self.decode(hat_z_sampled)
+
             return (
                 hat_x,
                 hat_z,
