@@ -446,16 +446,16 @@ def run(
     # generate data on a local machine and then load it on cluster.
 
     identifiability_path = os.path.join(
-        path, "identifiability_data", "identifiability_data"
+        path, "identifiability_data"
     )
     identifiability_train_loader = data_utils.load_identifiability_dataset(
-        os.path.join(identifiability_path, "train"), min_offset, scale
+        os.path.join(identifiability_path, sample_mode_train, "train"), min_offset, scale
     )
-    test_id_loader = data_utils.load_identifiability_dataset(
-        os.path.join(identifiability_path, "test_id"), min_offset, scale
+    identifiability_test_id_loader = data_utils.load_identifiability_dataset(
+        os.path.join(identifiability_path, sample_mode_test_id, "test_id"), min_offset, scale
     )
-    test_ood_loader = data_utils.load_identifiability_dataset(
-        os.path.join(identifiability_path, "test_ood"), min_offset, scale
+    identifiability_test_ood_loader = data_utils.load_identifiability_dataset(
+        os.path.join(identifiability_path, sample_mode_test_ood, "test_ood"), min_offset, scale
     )
     #######################################
 
@@ -491,14 +491,14 @@ def run(
 
         print("Learning rate: ", optimizer.param_groups[0]["lr"])
 
-        if epoch % 100 == 0:
-            if model_name in ["SlotAttention", "SlotMLPAdditive"]:
+        if epoch % 20 == 0:
+            if model_name in ["SlotAttention", "SlotMLPAdditive"] and epoch % 100 == 0:
                 id_score_id, id_score_ood = metrics.identifiability_score(
                     model,
                     n_slot_latents,
-                    train_loader,
-                    test_loader_id,
-                    test_loader_ood,
+                    identifiability_train_loader,
+                    identifiability_test_id_loader,
+                    identifiability_test_ood_loader,
                     device,
                 )
                 wandb.log(
