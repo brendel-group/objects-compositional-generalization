@@ -112,58 +112,126 @@ def identifiability_score(
     """
 
     model.eval()
+
     input_dim = train_loader.dataset[0][1].shape[1]
     n_slots = train_loader.dataset[0][1].shape[0]
 
     mlp = nn.Sequential(
-        nn.Linear(n_slots * input_dim, n_slots * input_dim * 2),
+        nn.Linear(input_dim, n_slots * input_dim * 2),
         nn.ReLU(),
         nn.Linear(n_slots * input_dim * 2, n_slots * input_dim * 2),
         nn.ReLU(),
         nn.Linear(n_slots * input_dim * 2, n_slots * input_dim * 2),
         nn.ReLU(),
-        nn.Linear(n_slots * input_dim * 2, latent_size * n_slots),
+        nn.Linear(n_slots * input_dim * 2, latent_size),
     ).to(device)
 
     optimizer = torch.optim.Adam(mlp.parameters(), lr=1e-3)
+    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=5, gamma=0.5)
     criterion = nn.MSELoss()
     best_id_scores = [torch.tensor(-torch.inf), torch.tensor(-torch.inf)]
     for epoch in tqdm.tqdm(range(20)):
         mlp.train()
         for i, (images, true_latents) in enumerate(train_loader):
             optimizer.zero_grad()
-            true_latents = true_latents.view(true_latents.shape[0], -1).to(device)
-            images = images.to(device)
-            _, predicted_latents, _ = model(images)
-            predicted_latents = predicted_latents.view(predicted_latents.shape[0], -1)
 
-            mapped_latents = mlp(true_latents)
-            loss = criterion(mapped_latents, predicted_latents)
+            figures = images[:, :-1, ...].to(device)
+            images = images[:, -1, ...].to(device).squeeze(1)
+            true_latents = true_latents.to(device)
+
+            with torch.no_grad():
+                (
+                    predicted_images,
+                    predicted_latents,
+                    predicted_figures,
+                    sampled_images,
+                    predicted_z_sampled,
+                    sampled_figures,
+                    z_sampled,
+                    predicted_sampled_images,
+                ) = model(images)
+
+            mapped_latents = torch.stack(
+                [mlp(true_latents[:, i, :]) for i in range(n_slots)], dim=1
+            )
+
+            figures_reshaped = figures.view(figures.shape[0], figures.shape[1], -1)
+            predicted_figures = torch.stack(predicted_figures, dim=1)
+
+            predicted_figures_reshaped = predicted_figures.reshape(
+                predicted_figures.shape[0], predicted_figures.shape[1], -1
+            )
+            with torch.no_grad():
+                _, transposed_indices = hungarian_slots_loss(
+                    figures_reshaped,
+                    predicted_figures_reshaped,
+                    device=device,
+                )
+            transposed_indices = transposed_indices.to(device)
+
+            predicted_latents = predicted_latents.gather(
+                1,
+                transposed_indices[:, :, 1]
+                .unsqueeze(-1)
+                .expand(-1, -1, mapped_latents.shape[-1]),
+            )
+
+            loss = criterion(
+                mapped_latents.view(-1, latent_size),
+                predicted_latents.view(-1, latent_size),
+            )
+            # print(loss.item())
             loss.backward()
             optimizer.step()
-
+        scheduler.step()
         mlp.eval()
         id_scores = []
         for loader in [test_id_loader, test_ood_loader]:
             r2_scores = []
-            __r2 = R2Score(latent_size * n_slots).to(device)
             for i, (images, true_latents) in enumerate(loader):
-                true_latents = true_latents.view(true_latents.shape[0], -1).to(device)
-                images = images.to(device)
-                _, predicted_latents, _ = model(images)
-                predicted_latents = predicted_latents.view(
-                    predicted_latents.shape[0], -1
+                figures = images[:, :-1, ...].to(device)
+                images = images[:, -1, ...].to(device).squeeze(1)
+                true_latents = true_latents.to(device)
+
+                with torch.no_grad():
+                    (
+                        predicted_images,
+                        predicted_latents,
+                        predicted_figures,
+                        sampled_images,
+                        predicted_z_sampled,
+                        sampled_figures,
+                        z_sampled,
+                        predicted_sampled_images,
+                    ) = model(images)
+
+                mapped_latents = torch.stack(
+                    [mlp(true_latents[:, i, :]) for i in range(n_slots)], dim=1
                 )
 
-                mapped_latents = mlp(true_latents)
-                r2 = __r2(mapped_latents, predicted_latents)
-                r2_scores.append(r2.cpu().detach())
-
-            id_scores.append(torch.mean(torch.stack(r2_scores)))
+                figures_reshaped = figures.view(figures.shape[0], figures.shape[1], -1)
+                predicted_figures = torch.stack(predicted_figures, dim=1)
+                predicted_figures_reshaped = predicted_figures.reshape(
+                    predicted_figures.shape[0], predicted_figures.shape[1], -1
+                )
+                with torch.no_grad():
+                    _, transposed_indices = hungarian_slots_loss(
+                        figures_reshaped,
+                        predicted_figures_reshaped,
+                        device=device,
+                    )
+                avg_score, _ = r2_score(
+                    mapped_latents, predicted_latents, transposed_indices
+                )
+                r2_scores.append(avg_score)
+            id_scores.append(np.mean(r2_scores))
 
         if id_scores[0] > best_id_scores[0]:
             best_id_scores[0] = id_scores[0]
         if id_scores[1] > best_id_scores[1]:
             best_id_scores[1] = id_scores[1]
+
+        print(f"Best OOD id score: {best_id_scores[1]}")
+        print(f"Best ID id score: {best_id_scores[0]}")
 
     return best_id_scores[0].item(), best_id_scores[1].item()

@@ -14,7 +14,7 @@ wandb.login(key="b17ca470c2ce70dd9d6c3ce01c6fc7656633fe91")
 import src.metrics as metrics
 import src.utils.data_utils as data_utils
 import src.utils.training_utils as training_utils
-from src.utils.wandb_utils import wandb_log
+from src.utils.wandb_utils import wandb_log, wandb_log_code
 
 from . import config, data
 from .models import base_models, slot_attention
@@ -56,7 +56,6 @@ def one_epoch(
     per_latent_r2_score = 0
     for batch_idx, (images, true_latents) in enumerate(dataloader):
         total_loss = torch.tensor(0.0, device=device)
-        consistency_decoder_loss = torch.tensor(0.0, device=device)
         predicted_figures = None
         predicted_images = None
         sampled_images = None
@@ -276,6 +275,7 @@ def run(
     wandb.init(config=wandb_config, project="object_centric_ood")
     wandb.define_metric("test_ID reconstruction loss", summary="min")
     wandb.define_metric("test_OOD reconstruction loss", summary="min")
+    wandb_log_code(wandb.run)
 
     time_created = time.strftime("%Y-%m-%d_%H-%M-%S", time.localtime())
 
@@ -439,6 +439,25 @@ def run(
         scheduler = torch.optim.lr_scheduler.StepLR(
             optimizer, step_size=lr_scheduler_step, gamma=0.5
         )
+    ##### Loading Identifiability Data #####
+
+    # Why loading data separately? - We experience some issues with generating data on cluster with
+    # multiple processes - we don't get separate ground truth figures from gym env. However, we can
+    # generate data on a local machine and then load it on cluster.
+
+    identifiability_path = os.path.join(
+        path, "identifiability_data", "identifiability_data"
+    )
+    identifiability_train_loader = data_utils.load_identifiability_dataset(
+        os.path.join(identifiability_path, "train"), min_offset, scale
+    )
+    test_id_loader = data_utils.load_identifiability_dataset(
+        os.path.join(identifiability_path, "test_id"), min_offset, scale
+    )
+    test_ood_loader = data_utils.load_identifiability_dataset(
+        os.path.join(identifiability_path, "test_ood"), min_offset, scale
+    )
+    #######################################
 
     for epoch in range(1, epochs + 1):
         total_loss, reconstruction_loss, slots_loss, r2_score = one_epoch(
@@ -472,25 +491,24 @@ def run(
 
         print("Learning rate: ", optimizer.param_groups[0]["lr"])
 
-        if epoch % 20 == 0:
-            # if model_name in ["SlotAttention", "SlotMLPAdditive"]:
-            #     id_score_id, id_score_ood = metrics.identifiability_score(
-            #         model,
-            #         n_slot_latents,
-            #         train_loader,
-            #         test_loader_id,
-            #         test_loader_ood,
-            #         device,
-            #     )
-            #     wandb.log(
-            #         {
-            #             "ID_score_ID": id_score_id,
-            #             "ID_score_OOD": id_score_ood,
-            #         },
-            #         step=epoch,
-            #     )
-            #     print("ID score ID: ", id_score_id)
-            #     print("ID score OOD: ", id_score_ood)
+        if epoch % 100 == 0:
+            if model_name in ["SlotAttention", "SlotMLPAdditive"]:
+                id_score_id, id_score_ood = metrics.identifiability_score(
+                    model,
+                    n_slot_latents,
+                    train_loader,
+                    test_loader_id,
+                    test_loader_ood,
+                    device,
+                )
+                wandb.log(
+                    {
+                        "ID_score_ID": id_score_id,
+                        "ID_score_OOD": id_score_ood,
+                    },
+                    step=epoch,
+                )
+
             (
                 id_total_loss,
                 id_reconstruction_loss,

@@ -88,6 +88,10 @@ def wandb_log(
     wandb.log(log_dict, step=epoch)
 
 
+def wandb_log_code(run):
+    run.log_code("src/", include_fn=lambda path: path.endswith(".py"))
+
+
 def __make_histogram(log_dict, model, title):
     n_steps = 50
     initial_sample = torch.tensor(

@@ -110,9 +110,11 @@ def make_pred_and_plot(
     outs = torch.zeros((0, 3, 64, 64))
     for image, label in train_loader:
         if decoder:
-            pred_image, _ = model.decoder(label.to(device))
+            output = model.decoder(label.to(device))
+            pred_image = output[0]
         else:
-            pred_image, pred_latents, _ = model(image.to(device))
+            output = model(image.to(device))
+            pred_image, pred_latents = output[0], output[1]
 
         pred_image = torch.clip(pred_image, 0, 1) * 255
         outs = torch.vstack([outs, pred_image.cpu().detach()])

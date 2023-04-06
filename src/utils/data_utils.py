@@ -3,6 +3,7 @@ import os
 import torch
 import tqdm
 
+import src.utils.training_utils as training_utils
 
 def dump_generated_dataset(dataset: torch.utils.data.TensorDataset, path: str):
     """Dumps generated dataset as torch tensors to a directory."""
@@ -32,3 +33,18 @@ class PreGeneratedDataset(torch.utils.data.Dataset):
 
     def __getitem__(self, idx):
         return self.images[idx], self.latents[idx]
+
+
+def load_identifiability_dataset(path: str, min_offset, scale):
+    """Loads identifiability dataset from a directory."""
+
+    dataset = PreGeneratedDataset(path)
+
+    dataloader = torch.utils.data.DataLoader(
+        dataset,
+        batch_size=128,
+        shuffle=False,
+        collate_fn=lambda b: training_utils.collate_fn_normalizer(b, min_offset, scale),
+    )
+    print(f"Identifiability dataset successfully loaded from {path}.")
+    return dataloader
