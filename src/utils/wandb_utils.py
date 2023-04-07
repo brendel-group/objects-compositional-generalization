@@ -89,7 +89,8 @@ def wandb_log(
 
 
 def wandb_log_code(run):
-    run.log_code("src/", include_fn=lambda path: path.endswith(".py"))
+    print(os.getcwd())
+    run.log_code("/home/bethge/apanfilov27/tmp/object_centric_ood/src/", include_fn=lambda path: path.endswith(".py"))
 
 
 def __make_histogram(log_dict, model, title):

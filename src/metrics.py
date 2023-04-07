@@ -117,13 +117,15 @@ def identifiability_score(
     n_slots = train_loader.dataset[0][1].shape[0]
 
     mlp = nn.Sequential(
-        nn.Linear(input_dim, n_slots * input_dim * 2),
+        nn.Linear(input_dim, 64),
         nn.ReLU(),
-        nn.Linear(n_slots * input_dim * 2, n_slots * input_dim * 2),
+        nn.Linear(64, 128),
         nn.ReLU(),
-        nn.Linear(n_slots * input_dim * 2, n_slots * input_dim * 2),
+        nn.Linear(128, 128),
         nn.ReLU(),
-        nn.Linear(n_slots * input_dim * 2, latent_size),
+        nn.Linear(128, 64),
+        nn.ReLU(),
+        nn.Linear(64, latent_size),
     ).to(device)
 
     optimizer = torch.optim.Adam(mlp.parameters(), lr=1e-3)
@@ -162,6 +164,7 @@ def identifiability_score(
                 predicted_figures.shape[0], predicted_figures.shape[1], -1
             )
             with torch.no_grad():
+                # no loss calculated here, just indices for resolving permutations
                 _, transposed_indices = hungarian_slots_loss(
                     figures_reshaped,
                     predicted_figures_reshaped,
@@ -180,7 +183,6 @@ def identifiability_score(
                 mapped_latents.view(-1, latent_size),
                 predicted_latents.view(-1, latent_size),
             )
-            # print(loss.item())
             loss.backward()
             optimizer.step()
         scheduler.step()

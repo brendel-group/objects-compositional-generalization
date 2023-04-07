@@ -188,7 +188,7 @@ class SpriteWorldDataset(torch.utils.data.TensorDataset):
                     -1
                 ]  # last one contains all sprites in one scene
             else:
-                # for some reason on linux it outputs only one image
+                # for some reason on cluster it outputs only one image
                 images[sample_ind] = np.array(out)
 
             if self.transform is not None:
