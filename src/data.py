@@ -19,7 +19,6 @@ def sample_latents(
     sample_mode: str = "random",
     delta: float = 1,
 ) -> torch.Tensor:
-
     assert 0 < delta <= 1, "Delta must be in (0, 1]."
 
     n_latents = cfg.get_total_latent_dim

@@ -26,7 +26,8 @@ def sample_random(
         l_type = latents_metadata[latent]
         if l_type == "continuous":
             z = cfg[latent].min + (cfg[latent].max - cfg[latent].min) * torch.rand(
-                n_samples, n_slots)
+                n_samples, n_slots
+            )
         elif l_type == "discrete":
             z = torch.randint(cfg[latent].min, cfg[latent].max, (n_samples, n_slots))
         elif l_type == "categorical":
@@ -138,12 +139,11 @@ def sample_delta_diagonal_cube(
         ort_vec /= torch.norm(ort_vec, p=2, dim=1, keepdim=True)
 
         # final step
+        # why n - 1 here? because we sample
+        # "radius" not in the original space, but in the embedded
         final = z_sampled + (
             ort_vec
-            * torch.pow(
-                torch.rand([_n, 1, n_latents]), 1 / (n_slots - 1)
-            )  # why n - 1 here? because we sample
-            # "radius" not in the original space, but in the embedded
+            * torch.pow(torch.rand([_n, 1, n_latents]), 1 / (n_slots - 1))
             * delta
         )
 
@@ -199,18 +199,14 @@ def sample_diagonal(
         l_type = latents_metadata[latent]
         if l_type == "continuous":
             z_out[:, :, i] = (
-                cfg[latent].min
-                + (cfg[latent].max - cfg[latent].min) * z_out[:, :, i]
+                cfg[latent].min + (cfg[latent].max - cfg[latent].min) * z_out[:, :, i]
             )
         elif l_type == "discrete":
             z_out[:, :, i] = torch.round(
-                cfg[latent].min
-                + (cfg[latent].max - cfg[latent].min) * z_out[:, :, i]
+                cfg[latent].min + (cfg[latent].max - cfg[latent].min) * z_out[:, :, i]
             )
         elif l_type == "categorical":
-            z_out[:, :, i] = torch.floor(
-                len(cfg[latent]) * z_out[:, :, i]
-            )
+            z_out[:, :, i] = torch.floor(len(cfg[latent]) * z_out[:, :, i])
         else:
             raise ValueError(f"Latent type {l_type} not supported.")
         i += 1

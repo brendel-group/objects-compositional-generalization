@@ -1,13 +1,7 @@
 import numpy as np
 import torch
 
-
-def collate_fn_normalizer(batch, bias=0, scale=1):
-    """Normalize latents target to [0, 1]. Used in dataloader."""
-    images, latents = zip(*batch)
-    latents = torch.stack(latents)
-    latents = (latents - bias) / scale
-    return torch.stack(images), latents
+from typing import Tuple
 
 
 def sample_z_from_latents(latents):
@@ -48,3 +42,51 @@ def set_seed(seed):
 
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
+
+
+from typing import Tuple
+
+
+def print_metrics_to_console(
+    epoch: int,
+    accum_total_loss: float,
+    accum_reconstruction_loss: float,
+    accum_consistency_loss: float,
+    accum_r2_score: float,
+    accum_slots_loss: float,
+    accum_encoder_consistency_loss: float,
+    accum_decoder_consistency_loss: float,
+) -> None:
+    """
+    Prints the metrics to console in a tabular format.
+
+    Args:
+    epoch: The current epoch.
+    accum_total_loss: The accumulated total loss.
+    accum_reconstruction_loss: The accumulated reconstruction loss.
+    accum_consistency_loss: The accumulated consistency loss.
+    accum_r2_score: The accumulated R2 score.
+    accum_slots_loss: The accumulated slots loss.
+    accum_encoder_consistency_loss: The accumulated encoder consistency loss.
+    accum_decoder_consistency_loss: The accumulated decoder consistency loss.
+    """
+    print(f"{'=' * 120}")
+    print(
+        f"{'Epoch':<10}{'Avg. loss (Rec. + Cons. weighted)':<40}{'Cons. encoder loss':<25}{'Cons. decoder loss':<25}{'R2 score':<15}{'Slots loss':<15}"
+    )
+    print(f"{'=' * 120}")
+    print(
+        "{:<10}{:<40}{:<25}{:<25}{:<15}{:<15}".format(
+            " " + str(epoch),
+            "{:.4f} = {:.4f} + {:.4f}".format(
+                accum_total_loss, accum_reconstruction_loss, accum_consistency_loss
+            ),
+            "{:.4f}".format(accum_encoder_consistency_loss),
+            "{:.4f}".format(accum_decoder_consistency_loss),
+            "{:.4f}".format(accum_r2_score),
+            "{:.4f}".format(accum_slots_loss),
+            "",
+            "",
+        )
+    )
+    print(f"{'=' * 120}")
