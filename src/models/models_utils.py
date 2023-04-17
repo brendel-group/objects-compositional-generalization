@@ -1,6 +1,5 @@
-import numpy as np
 import torch.nn as nn
-import torch
+
 
 class View(nn.Module):
     def __init__(self, size):
@@ -40,22 +39,21 @@ def get_twin_head_encoder(in_channels, out_dim, n_slots):
     """
     Encoder f^{-1}: X -> Z; X - input image, Z - latent space.
     """
-    encoder_shared = nn.Sequential(
-        nn.Conv2d(in_channels, 32, 4, 2, 1),
-        nn.ELU(),
-        nn.Conv2d(32, 32, 4, 2, 1),
-        nn.ELU(),
-        nn.Conv2d(32, 32, 4, 2, 1),
-        nn.ELU(),
-        nn.Conv2d(32, 32, 4, 2, 1),
-        nn.ELU(),
-        View((-1, 32 * 4 * 4)),
-        nn.Linear(32 * 4 * 4, 256),
-        nn.ELU(),
-    )
+    encoder_shared = nn.Sequential()
     encoder_separate = nn.ModuleList(
         [
             nn.Sequential(
+                nn.Conv2d(in_channels, 32, 4, 2, 1),
+                nn.ELU(),
+                nn.Conv2d(32, 32, 4, 2, 1),
+                nn.ELU(),
+                nn.Conv2d(32, 32, 4, 2, 1),
+                nn.ELU(),
+                nn.Conv2d(32, 32, 4, 2, 1),
+                nn.ELU(),
+                View((-1, 32 * 4 * 4)),
+                nn.Linear(32 * 4 * 4, 256),
+                nn.ELU(),
                 nn.Linear(256, 256),
                 nn.ELU(),
                 nn.Linear(256, 128),
@@ -81,33 +79,11 @@ def get_decoder(in_dim, out_channels):
         nn.ELU(),
         View((-1, 32, 4, 4)),
         nn.ConvTranspose2d(32, 32, 4, 2, 1),
-        nn.Dropout2d(0.3),
         nn.ELU(),
         nn.ConvTranspose2d(32, 32, 4, 2, 1),
-        nn.Dropout2d(0.3),
         nn.ELU(),
         nn.ConvTranspose2d(32, 32, 4, 2, 1),
         nn.ELU(),
         nn.ConvTranspose2d(32, out_channels, 4, 2, 1),
     )
     return decoder
-
-
-def build_grid(resolution):
-    ranges = [np.linspace(0.0, 1.0, num=res) for res in resolution]
-    grid = np.meshgrid(*ranges, sparse=False, indexing="ij")
-    grid = np.stack(grid, axis=-1)
-    grid = np.reshape(grid, [resolution[0], resolution[1], -1])
-    grid = np.expand_dims(grid, axis=0)
-    grid = grid.astype(np.float32)
-    return np.concatenate([grid, 1.0 - grid], axis=-1)
-
-
-def add_figures_with_obstruction(
-    figure_1: torch.Tensor, figure_2: torch.Tensor
-) -> torch.Tensor:
-    """Add two figures with pixels of figure_1 overlapping figure_2."""
-    mask_1 = figure_1 > 0
-    mask_2 = figure_2 > 0
-    mask = mask_1 * mask_2
-    return figure_1 + figure_2 * (~mask)

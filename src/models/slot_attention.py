@@ -1,9 +1,118 @@
-"""Code provided by Jack Brady."""
-from torch import nn
-import torch
-import torch.nn.functional as F
+"""
+Slot Attention-based auto-encoder for object discovery. Code provided by Jack Brady.
+"""
+from contextlib import nullcontext
 
 import numpy as np
+import torch
+import torch.nn.functional as F
+from src.utils.training_utils import sample_z_from_latents
+from torch import nn
+
+
+class SlotAttentionAutoEncoder(nn.Module):
+    def __init__(self, encoder, decoder, num_slots, num_iterations, hid_dim):
+        """Builds the Slot Attention-based auto-encoder.
+        Args:
+        num_slots: Number of slots in Slot Attention.
+        num_iterations: Number of iterations in Slot Attention.
+        hid_dim: Hidden dimension of Slot Attention.
+        """
+        super().__init__()
+        self.model_name = "SlotAttention"
+        self.hid_dim = hid_dim
+        self.num_slots = num_slots
+        self.num_iterations = num_iterations
+
+        self.encoder_cnn = encoder
+        self.decoder_cnn = decoder
+
+        self.fc1 = nn.Linear(hid_dim, hid_dim)
+        self.fc2 = nn.Linear(hid_dim, hid_dim)
+
+        self.slot_attention = SlotAttention(
+            num_slots=self.num_slots,
+            dim=hid_dim,
+            iters=self.num_iterations,
+            eps=1e-8,
+            hidden_dim=64,
+        )
+
+    def encode(self, x):
+        # `x` is an image which has shape: [batch_size, num_channels, width, height].
+
+        # Convolutional encoder with position embedding.
+        x = self.encoder_cnn(x)  # CNN Backbone.
+        x = F.layer_norm(x, x.shape[1:])
+        x = self.fc1(x)
+        x = F.relu(x)
+        x = self.fc2(x)  # Feedforward network on set.
+        # `x` has shape: [batch_size, width*height, input_size].
+
+        # Slot Attention module.
+        return self.slot_attention(x)
+
+    def decode(self, hat_z):
+        # """Broadcast slot features to a 2D grid and collapse slot dimension.""".
+        # `slots` has shape: [batch_size*num_slots, width_init, height_init, slot_size].
+        slots = (
+            hat_z.reshape((-1, hat_z.shape[-1]))
+            .unsqueeze(1)
+            .unsqueeze(2)
+            .repeat((1, 8, 8, 1))
+        )
+
+        # `out` has shape: [batch_size*num_slots, width, height, num_channels+1].
+        out = self.decoder_cnn(slots)
+
+        # Undo combination of slot and batch dimension; split alpha masks.
+        reconstructions, masks = out.reshape(
+            -1, self.num_slots, out.shape[1], out.shape[2], out.shape[3]
+        ).split([3, 1], dim=-1)
+
+        # Normalize alpha masks over slots.
+        masks = F.softmax(masks, dim=1)
+        xhs = reconstructions * masks
+
+        # `hat_x` has shape: [batch_size, num_channels, width, height].
+        hat_x = torch.sum(xhs, dim=1).permute(0, 3, 1, 2)
+
+        figures = [
+            xhs.squeeze()[:, slot_i, ...].permute(0, 3, 1, 2)
+            for slot_i in range(self.num_slots)
+        ]
+        return hat_x, figures
+
+    def forward(
+        self,
+        x,
+        use_consistency_loss=False,
+        extended_consistency_loss=False,
+        detached_latents=False,
+    ):
+        hat_z = self.encode(x)
+        hat_x, figures = self.decode(hat_z)
+
+        # we always want to look at the consistency loss, but we not always want to backpropagate through consistency part
+        with nullcontext() if use_consistency_loss else torch.no_grad():
+            z_sampled = sample_z_from_latents(hat_z.detach())
+            with torch.no_grad() if detached_latents else nullcontext():
+                x_sampled, figures_sampled = self.decode(z_sampled)
+
+            hat_z_sampled = self.encode(x_sampled)
+            with nullcontext() if extended_consistency_loss else torch.no_grad():
+                hat_x_sampled, _ = self.decode(hat_z_sampled)
+
+            return (
+                hat_x,
+                hat_z,
+                figures,
+                x_sampled,
+                hat_z_sampled,
+                figures_sampled,
+                z_sampled,
+                hat_x_sampled,
+            )
 
 
 class SlotAttention(nn.Module):
@@ -61,109 +170,18 @@ class SlotAttention(nn.Module):
         return slots
 
 
-"""Slot Attention-based auto-encoder for object discovery."""
-
-
-class SlotAttentionAutoEncoder(nn.Module):
-    def __init__(
-        self, encoder, decoder, num_slots, num_iterations, hid_dim, device="cuda"
-    ):
-        """Builds the Slot Attention-based auto-encoder.
-        Args:
-        num_slots: Number of slots in Slot Attention.
-        num_iterations: Number of iterations in Slot Attention.
-        """
-        super().__init__()
-        self.model_name = "SlotAttention"
-        self.hid_dim = hid_dim
-        self.num_slots = num_slots
-        self.num_iterations = num_iterations
-        self.device = device
-
-        self.encoder_cnn = encoder
-        self.decoder_cnn = decoder
-
-        self.fc1 = nn.Linear(hid_dim, hid_dim)
-        self.fc2 = nn.Linear(hid_dim, hid_dim)
-
-        self.slot_attention = SlotAttention(
-            num_slots=self.num_slots,
-            dim=hid_dim,
-            iters=self.num_iterations,
-            eps=1e-8,
-            hidden_dim=64,
-        )
-
-    def encode(self, image):
-        # `image` has shape: [batch_size, num_channels, width, height].
-
-        # Convolutional encoder with position embedding.
-        x = self.encoder_cnn(image)  # CNN Backbone.
-        x = nn.LayerNorm(x.shape[1:]).to(self.device)(x)
-        x = self.fc1(x)
-        x = F.relu(x)
-        x = self.fc2(x)  # Feedforward network on set.
-        # `x` has shape: [batch_size, width*height, input_size].
-        # Slot Attention module.
-        return self.slot_attention(x)
-
-    def decoding(self, slots):
-        slots = slots.view(1, self.num_slots, self.hid_dim)
-        slots = slots.reshape((-1, slots.shape[-1])).unsqueeze(1).unsqueeze(2)
-        slots = slots.repeat((1, 8, 8, 1))
-        x = self.decoder_cnn(slots)
-        recons, masks = x.reshape(1, -1, x.shape[1], x.shape[2], x.shape[3]).split(
-            [3, 1], dim=-1
-        )
-        masks = nn.Softmax(dim=1)(masks)
-        recon_combined = torch.sum(recons * masks, dim=1)  # Recombine image.
-        recon_combined = recon_combined.permute(0, 3, 1, 2)
-        return recon_combined
-
-    def forward(self, image):
-        # `slots` has shape: [batch_size, num_slots, slot_size].
-        z_hat = self.encode(image)
-        # """Broadcast slot features to a 2D grid and collapse slot dimension.""".
-        slots = z_hat.reshape((-1, z_hat.shape[-1])).unsqueeze(1).unsqueeze(2)
-        slots = slots.repeat((1, 8, 8, 1))
-
-        # `slots` has shape: [batch_size*num_slots, width_init, height_init, slot_size].
-        x = self.decoder_cnn(slots)
-        # `x` has shape: [batch_size*num_slots, width, height, num_channels+1].
-
-        # Undo combination of slot and batch dimension; split alpha masks.
-        recons, masks = x.reshape(
-            image.shape[0], -1, x.shape[1], x.shape[2], x.shape[3]
-        ).split([3, 1], dim=-1)
-        # `recons` has shape: [batch_size, num_slots, width, height, num_channels].
-        # `masks` has shape: [batch_size, num_slots, width, height, 1].
-
-        # Normalize alpha masks over slots.
-        masks = nn.Softmax(dim=1)(masks)
-        xhs = recons * masks
-        recon_combined = torch.sum(xhs, dim=1)  # Recombine image.
-        recon_combined = recon_combined.permute(0, 3, 1, 2)
-        # `recon_combined` has shape: [batch_size, width, height, num_channels].
-        z_hat = z_hat.flatten(1, (len(z_hat.shape)) - 1)
-
-        return recon_combined, z_hat, xhs.permute(0, 1, 4, 2, 3)
-
-
-"""Adds soft positional embedding with learnable projection."""
-
-
-def build_grid(resolution, device="cuda"):
+def build_grid(resolution):
     ranges = [np.linspace(0.0, 1.0, num=res) for res in resolution]
     grid = np.meshgrid(*ranges, sparse=False, indexing="ij")
     grid = np.stack(grid, axis=-1)
     grid = np.reshape(grid, [resolution[0], resolution[1], -1])
     grid = np.expand_dims(grid, axis=0)
     grid = grid.astype(np.float32)
-    return torch.from_numpy(np.concatenate([grid, 1.0 - grid], axis=-1)).to(device)
+    return torch.from_numpy(np.concatenate([grid, 1.0 - grid], axis=-1))
 
 
 class SoftPositionEmbed(nn.Module):
-    def __init__(self, hidden_size, resolution, device="cuda"):
+    def __init__(self, hidden_size, resolution):
         """Builds the soft position embedding layer.
         Args:
         hidden_size: Size of input feature dimension.
@@ -171,21 +189,21 @@ class SoftPositionEmbed(nn.Module):
         """
         super().__init__()
         self.embedding = nn.Linear(4, hidden_size, bias=True)
-        self.grid = build_grid(resolution, device)
+        self.grid = build_grid(resolution)
 
     def forward(self, inputs):
-        grid = self.embedding(self.grid)
+        grid = self.embedding(self.grid.to(inputs.device))
         return inputs + grid
 
 
 class SlotAttentionEncoder(nn.Module):
-    def __init__(self, resolution, hid_dim, device="cuda"):
+    def __init__(self, resolution, hid_dim):
         super().__init__()
         self.conv1 = nn.Conv2d(3, hid_dim, 5, padding=2)
         self.conv2 = nn.Conv2d(hid_dim, hid_dim, 5, padding=2)
         self.conv3 = nn.Conv2d(hid_dim, hid_dim, 5, padding=2)
         self.conv4 = nn.Conv2d(hid_dim, hid_dim, 5, padding=2)
-        self.encoder_pos = SoftPositionEmbed(hid_dim, resolution, device=device)
+        self.encoder_pos = SoftPositionEmbed(hid_dim, resolution)
 
     def forward(self, x):
         x = self.conv1(x)
@@ -203,26 +221,24 @@ class SlotAttentionEncoder(nn.Module):
 
 
 class SlotAttentionDecoder(nn.Module):
-    def __init__(self, hid_dim, resolution, device):
+    def __init__(self, hid_dim, resolution):
         super().__init__()
         self.conv1 = nn.ConvTranspose2d(
             hid_dim, hid_dim, 5, stride=(2, 2), padding=2, output_padding=1
-        ).to(device)
+        )
         self.conv2 = nn.ConvTranspose2d(
             hid_dim, hid_dim, 5, stride=(2, 2), padding=2, output_padding=1
-        ).to(device)
+        )
         self.conv3 = nn.ConvTranspose2d(
             hid_dim, hid_dim, 5, stride=(2, 2), padding=2, output_padding=1
-        ).to(device)
+        )
         self.conv4 = nn.ConvTranspose2d(
             hid_dim, hid_dim, 5, stride=(2, 2), padding=2, output_padding=1
-        ).to(device)
-        self.conv5 = nn.ConvTranspose2d(
-            hid_dim, hid_dim, 5, stride=(1, 1), padding=2
-        ).to(device)
+        )
+        self.conv5 = nn.ConvTranspose2d(hid_dim, hid_dim, 5, stride=(1, 1), padding=2)
         self.conv6 = nn.ConvTranspose2d(hid_dim, 4, 3, stride=(1, 1), padding=1)
         self.decoder_initial_size = (8, 8)
-        self.decoder_pos = SoftPositionEmbed(hid_dim, self.decoder_initial_size, device)
+        self.decoder_pos = SoftPositionEmbed(hid_dim, self.decoder_initial_size)
         self.resolution = resolution
 
     def forward(self, x):
@@ -245,6 +261,8 @@ class SlotAttentionDecoder(nn.Module):
 
 
 class PositionalEmbedding(nn.Module):
+    """Adds soft positional embedding with learnable projection."""
+
     def __init__(self, height: int, width: int, channels: int):
         super().__init__()
         east = torch.linspace(0, 1, width).repeat(height)

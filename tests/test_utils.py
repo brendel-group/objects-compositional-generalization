@@ -1,7 +1,8 @@
 import pytest
 import torch
 
-from src import training_utils
+import src.metrics
+from src.utils import training_utils
 
 
 @pytest.mark.parametrize(
@@ -18,7 +19,7 @@ def test_r2_score(n_samples, n_slots):
     predicted_latents = true_latents.clone()
     indices = torch.tensor([[i] * 2 for i in range(n_slots)] * n_samples)
     indices = indices.reshape(n_samples, n_slots, 2)
-    avg_r2_score, r2_score_raw = training_utils.calculate_r2_score(
+    avg_r2_score, r2_score_raw = src.metrics.r2_score(
         true_latents, predicted_latents, indices
     )
 

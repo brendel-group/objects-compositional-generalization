@@ -1,10 +1,12 @@
 --extra-index-url https://download.pytorch.org/whl/cu117
+git+https://github.com/JackBrady/spriteworld
 torch
 torchvision
 torchaudio
 numpy
+pandas
+seaborn
 scipy
 torchmetrics
-spriteworld
 wandb
 tqdm

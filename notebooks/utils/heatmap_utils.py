@@ -1,7 +1,9 @@
+import os
 import random
 
 import matplotlib.pyplot as plt
 import numpy as np
+import seaborn as sns
 import torch
 import torchvision.transforms as transforms
 import tqdm
@@ -65,31 +67,34 @@ def plot_dataset_images(dataset, rows=5, cols=5, name="gt", pred=False, id_mask=
 
 
 def create_traversed_dataset(initial_sample, n_steps=4):
-    samples = []
-    y_range = np.linspace(0.2, 0.8, n_steps)
-    c_1_range = np.linspace(0.1, 0.9, n_steps)
+    # Define the ranges for y and c_0
+    y_range = torch.linspace(0.2, 0.8, n_steps)
+    c_0_range = torch.linspace(0.1, 0.9, n_steps)
 
-    for i in range(n_steps):
-        for j in range(n_steps):
-            sample = initial_sample.clone()
-            sample[0][1] = y_range[i]
-            sample[1][1] = y_range[j]
+    y_combinations = torch.cartesian_prod(y_range, y_range)
+    c_0_combinations = torch.cartesian_prod(c_0_range, c_0_range)
 
-            sample[0][-3] = c_1_range[i]
-            sample[1][-3] = c_1_range[j]
+    # Create a tensor of repeated initial samples with the shape (n_steps, initial_sample[0], initial_sample[1])
+    samples = initial_sample.repeat((n_steps**2, 1, 1))
 
-            samples.append(sample)
+    # Replace the values of y and c_0 for each entity using tensor slicing
+    samples[:, 0, 1] = y_combinations[:, 0]
+    samples[:, 1, 1] = y_combinations[:, 1]
+    samples[:, 0, -3] = c_0_combinations[:, 1]
+    samples[:, 1, -3] = c_0_combinations[:, 0]
 
+    # Create a dataset using the tensor of samples
     traversed_dataset = data.SpriteWorldDataset(
-        len(torch.stack(samples)),
+        len(samples),
         2,
         default_cfg,
         sample_mode="random",
         no_overlap=True,
         delta=0.3,
-        z=torch.stack(samples),
+        z=samples,
         transform=transform,
     )
+
     return traversed_dataset
 
 
@@ -105,9 +110,11 @@ def make_pred_and_plot(
     outs = torch.zeros((0, 3, 64, 64))
     for image, label in train_loader:
         if decoder:
-            pred_image, _ = model.decoder(label.to(device))
+            output = model.decoder(label.to(device))
+            pred_image = output[0]
         else:
-            pred_image, pred_latents, _ = model(image.to(device))
+            output = model(image.to(device))
+            pred_image, pred_latents = output[0], output[1]
 
         pred_image = torch.clip(pred_image, 0, 1) * 255
         outs = torch.vstack([outs, pred_image.cpu().detach()])
@@ -167,3 +174,89 @@ def predict_for_heatmap(model, model_path, data_loader, decoder=True, device="cu
         )
 
     return [i.sum().detach().item() for i in loss_array]
+
+
+def get_id_bounds(x, y, shape):
+    id_mtx = np.zeros((shape + 2, shape + 2))
+    id_mtx[(x + 1, y + 1)] = 1
+
+    x_line_left, y_line_left, x_line_right, y_line_right = [], [], [1], [1]
+    for i in range(id_mtx.shape[0]):
+        for j in range(id_mtx.shape[1]):
+            if id_mtx[i, j]:
+                if not id_mtx[i, j + 1]:
+                    x_line_right.append(i)
+                    y_line_right.append(j)
+                if not id_mtx[i, j - 1]:
+                    x_line_left.append(i)
+                    y_line_left.append(j)
+
+    x_line_left += [id_mtx.shape[0] - 2]
+    y_line_left += [id_mtx.shape[0] - 2]
+    x_line_right += [id_mtx.shape[1] - 2]
+    y_line_right += [id_mtx.shape[1] - 2]
+
+    return (
+        np.array(x_line_left) - 0.5,
+        np.array(y_line_left) - 0.5,
+        np.array(x_line_right) - 0.5,
+        np.array(y_line_right) - 0.5,
+    )
+
+
+def plot_heatmap(
+    loss_arrays, left_line, right_line, save_name, shape=100, figsize=(12, 5), show=True
+):
+    f, axs = plt.subplots(
+        1,
+        len(loss_arrays) + 1,
+        gridspec_kw={"width_ratios": [1] * len(loss_arrays) + [0.08]},
+        figsize=figsize,
+    )
+    max_ = max(max(np.array(loss_i)) for loss_i in loss_arrays)
+    gs = []
+
+    x_line_left, y_line_left = left_line
+    x_line_right, y_line_right = right_line
+    for i in range(len(loss_arrays)):
+        axs[i].scatter(
+            0,
+            0,
+            s=shape,
+            alpha=1,
+            marker="s",
+            facecolors="none",
+            edgecolors="#C32828",
+            linewidth=1,
+            label="ID samples",
+        )
+        last_heatmap = i == (len(loss_arrays) - 1)
+        kwargs = {}
+        if last_heatmap:
+            kwargs["cbar_ax"] = axs[i + 1]
+        gs.append(
+            sns.heatmap(
+                np.array(loss_arrays[i]).reshape(shape, shape) / max_,
+                vmin=0,
+                vmax=1,
+                cmap="icefire",
+                cbar=last_heatmap,
+                ax=axs[i],
+                **kwargs,
+            )
+        )
+
+        # axs[0].scatter(x, y, s=5, alpha=0.5, marker="s", facecolors="none", edgecolors="#C32828", linewidth=0.2)
+        axs[i].plot(x_line_left, y_line_left, c="#C32828")
+        axs[i].plot(x_line_right, y_line_right, c="#C32828")
+        axs[i].legend(loc="lower right")
+        gs[i].set_xticks([])
+        gs[i].set_yticks([])
+
+    folder_name = "heatmaps"
+    os.makedirs(folder_name, exist_ok=True)
+    plt.savefig(f"{folder_name}/{save_name}")
+    if show:
+        plt.show()
+    else:
+        plt.close()

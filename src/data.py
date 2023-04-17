@@ -1,13 +1,13 @@
 import warnings
-from typing import Optional, Callable
+from typing import Callable, Optional
 
 import numpy as np
 import torch
 import tqdm
 from spriteworld import environment, renderers, sprite, tasks
 
-from . import sampling_utils
 from .config import Config, SpriteWorldConfig
+from .utils import sampling_utils
 
 warnings.filterwarnings("ignore", module="spriteworld")
 
@@ -19,7 +19,6 @@ def sample_latents(
     sample_mode: str = "random",
     delta: float = 1,
 ) -> torch.Tensor:
-
     assert 0 < delta <= 1, "Delta must be in (0, 1]."
 
     n_latents = cfg.get_total_latent_dim
@@ -130,7 +129,47 @@ class SpriteWorldDataset(torch.utils.data.TensorDataset):
         )
 
         self.x = self.__generate_from_latents().detach()
-        super().__init__(self.x, self.z)
+        super().__init__(self.x, self.__update_latents(self.z))
+
+    def __update_latents(self, z: torch.Tensor):
+        """Remove fixed latents."""
+        return torch.cat([z[:, :, :4], z[:, :, 5:-2]], dim=-1)
+
+    def __generate(self):
+        """Generates a list of sprites from generated latents for the environment."""
+
+        if self.sample_mode in ["diagonal", "off_diagonal", "pure_off_diagonal"]:
+            # adjusting x to avoid overlapping sprites
+            x_scaled = self.__adjust_x_coord(self.z[self.__generate_ind, :, :2])
+            self.z[self.__generate_ind, :, 0] = x_scaled
+
+        if self.sample_mode in ["off_diagonal", "pure_off_diagonal"]:
+            # removing same shapes (this artifact comes from "floor" rounding)
+            shape = self.__adjust_shape(self.z[self.__generate_ind, :, 2])
+            self.z[self.__generate_ind, :, 2] = shape
+
+        # adjusting figure scale to avoid severely overlapping sprites
+        self.z[self.__generate_ind, :, 3] = self.cfg["scale"].min + (
+            self.z[self.__generate_ind, :, 3] - self.cfg["scale"].min
+        ) * (1 / (self.n_slots + 1))
+
+        # generating sprites
+        sample = self.z[self.__generate_ind]
+        latents_metadata = self.cfg.get_latents_metadata()
+        sampled_sprites = [None] * self.n_slots
+        for slot_ind in range(self.n_slots):
+            sprite_sample = {}
+            i = 0
+            for latent in latents_metadata:
+                if latent == "shape":
+                    sprite_sample["shape"] = self.cfg.shape[
+                        int(sample[slot_ind, i].item())
+                    ]
+                else:
+                    sprite_sample[latent] = sample[slot_ind, i]
+                i += 1
+            sampled_sprites[slot_ind] = sprite.Sprite(**sprite_sample)
+        return sampled_sprites
 
     def __generate_from_latents(self) -> torch.Tensor:
         images = [None] * self.n_samples
@@ -148,7 +187,7 @@ class SpriteWorldDataset(torch.utils.data.TensorDataset):
                     -1
                 ]  # last one contains all sprites in one scene
             else:
-                # for some reason on linux it outputs only one image
+                # for some reason on cluster it outputs only one image
                 images[sample_ind] = np.array(out)
 
             if self.transform is not None:
@@ -233,39 +272,3 @@ class SpriteWorldDataset(torch.utils.data.TensorDataset):
             generated_shape = torch.rand(self.n_slots)
             generated_shape = torch.floor(len(self.cfg["shape"]) * generated_shape)
         return generated_shape
-
-    def __generate(self):
-        """Generates a list of sprites from generated latents for the environment."""
-
-        if self.sample_mode in ["diagonal", "off_diagonal", "pure_off_diagonal"]:
-            # adjusting x to avoid overlapping sprites
-            x_scaled = self.__adjust_x_coord(self.z[self.__generate_ind, :, :2])
-            self.z[self.__generate_ind, :, 0] = x_scaled
-
-        if self.sample_mode in ["off_diagonal", "pure_off_diagonal"]:
-            # removing same shapes (this artifact comes from "floor" rounding)
-            shape = self.__adjust_shape(self.z[self.__generate_ind, :, 2])
-            self.z[self.__generate_ind, :, 2] = shape
-
-        # adjusting figure scale to avoid severely overlapping sprites
-        self.z[self.__generate_ind, :, 3] = self.cfg["scale"].min + (
-            self.z[self.__generate_ind, :, 3] - self.cfg["scale"].min
-        ) * (1 / (self.n_slots + 1))
-
-        # generating sprites
-        sample = self.z[self.__generate_ind]
-        latents_metadata = self.cfg.get_latents_metadata()
-        sampled_sprites = [None] * self.n_slots
-        for slot_ind in range(self.n_slots):
-            sprite_sample = {}
-            i = 0
-            for latent in latents_metadata:
-                if latent == "shape":
-                    sprite_sample["shape"] = self.cfg.shape[
-                        int(sample[slot_ind, i].item())
-                    ]
-                else:
-                    sprite_sample[latent] = sample[slot_ind, i]
-                i += 1
-            sampled_sprites[slot_ind] = sprite.Sprite(**sprite_sample)
-        return sampled_sprites
