@@ -104,10 +104,14 @@ class SpritesWorldDataWrapper:
         batch_size,
         **kwargs,
     ):
-        if self.load and os.path.isdir(os.path.join(self.path, "train")):
-            train_dataset = PreGeneratedDataset(os.path.join(self.path, "train"))
+        if self.load and os.path.exists(
+            os.path.join(self.path, "train", sample_mode_train)
+        ):
+            train_dataset = PreGeneratedDataset(
+                os.path.join(self.path, "train", sample_mode_train)
+            )
             print(
-                f"Train dataset successfully loaded from {os.path.join(self.path, 'train')}."
+                f"Train dataset successfully loaded from {os.path.join(self.path, 'train', sample_mode_train)}."
             )
         else:
             train_dataset = data.SpriteWorldDataset(
@@ -120,7 +124,9 @@ class SpritesWorldDataWrapper:
                 transform=transforms.Compose([transforms.ToTensor()]),
             )
             if self.save:
-                dump_generated_dataset(train_dataset, os.path.join(self.path, "train"))
+                dump_generated_dataset(
+                    train_dataset, os.path.join(self.path, "train", sample_mode_train)
+                )
 
         train_loader = torch.utils.data.DataLoader(
             train_dataset,
@@ -141,10 +147,14 @@ class SpritesWorldDataWrapper:
         batch_size,
         **kwargs,
     ):
-        if self.load and os.path.isdir(os.path.join(self.path, "test_id")):
-            test_dataset = PreGeneratedDataset(os.path.join(self.path, "test_id"))
+        if self.load and os.path.exists(
+            os.path.join(self.path, "test", sample_mode_test_id)
+        ):
+            test_dataset = PreGeneratedDataset(
+                os.path.join(self.path, "test", sample_mode_test_id)
+            )
             print(
-                f"Test ID dataset successfully loaded from {os.path.join(self.path, 'test_id')}."
+                f"Test ID dataset successfully loaded from {os.path.join(self.path, 'test', sample_mode_test_id)}."
             )
         else:
             test_dataset = data.SpriteWorldDataset(
@@ -157,7 +167,9 @@ class SpritesWorldDataWrapper:
                 transform=transforms.Compose([transforms.ToTensor()]),
             )
             if self.save:
-                dump_generated_dataset(test_dataset, os.path.join(self.path, "test_id"))
+                dump_generated_dataset(
+                    test_dataset, os.path.join(self.path, "test", sample_mode_test_id)
+                )
 
         test_loader = torch.utils.data.DataLoader(
             test_dataset,
@@ -178,10 +190,14 @@ class SpritesWorldDataWrapper:
         batch_size,
         **kwargs,
     ):
-        if self.load and os.path.isdir(os.path.join(self.path, "test_ood")):
-            test_dataset = PreGeneratedDataset(os.path.join(self.path, "test_ood"))
+        if self.load and os.path.exists(
+            os.path.join(self.path, "test", sample_mode_test_ood)
+        ):
+            test_dataset = PreGeneratedDataset(
+                os.path.join(self.path, "test", sample_mode_test_ood)
+            )
             print(
-                f"Test OOD dataset successfully loaded from {os.path.join(self.path, 'test_ood')}."
+                f"Test OOD dataset successfully loaded from {os.path.join(self.path, 'test', sample_mode_test_ood)}."
             )
         else:
             test_dataset = data.SpriteWorldDataset(
@@ -195,7 +211,7 @@ class SpritesWorldDataWrapper:
             )
             if self.save:
                 dump_generated_dataset(
-                    test_dataset, os.path.join(self.path, "test_ood")
+                    test_dataset, os.path.join(self.path, "test", sample_mode_test_ood)
                 )
 
         test_loader = torch.utils.data.DataLoader(

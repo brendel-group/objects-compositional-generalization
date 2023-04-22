@@ -34,7 +34,7 @@ def wandb_log(
     accum_slots_loss=None,
     r2_score=None,
     per_latent_r2_score=None,
-    reconstruction_loss=None,
+    accum_reconstruction_loss=None,
     images=None,
     predicted_images=None,
     predicted_figures=None,
@@ -57,8 +57,8 @@ def wandb_log(
     if images is not None and epoch % freq == 0:
         __log_images(log_dict, images, f"{mode} target")
 
-    if reconstruction_loss is not None:
-        log_dict[f"{mode} reconstruction loss"] = reconstruction_loss
+    if accum_reconstruction_loss is not None:
+        log_dict[f"{mode} reconstruction loss"] = accum_reconstruction_loss
 
     if accum_slots_loss is not None:
         log_dict[f"{mode} slots loss"] = accum_slots_loss

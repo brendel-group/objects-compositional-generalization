@@ -9,6 +9,7 @@ import wandb
 
 
 import src.metrics as metrics
+import src.models
 import src.utils.data_utils as data_utils
 import src.utils.training_utils as training_utils
 from src.utils.wandb_utils import wandb_log, wandb_log_code
@@ -55,8 +56,8 @@ def one_epoch(
     accum_r2_score = 0
     per_latent_r2_score = 0
     accum_consistency_loss = 0
-    accum_encoder_consistency_loss = 0
-    accum_decoder_consistency_loss = 0
+    accum_consistency_encoder_loss = 0
+    accum_consistency_decoder_loss = 0
     for batch_idx, (images, true_latents) in enumerate(dataloader):
         total_loss = torch.tensor(0.0, device=device)
 
@@ -66,6 +67,13 @@ def one_epoch(
         if mode == "train":
             optimizer.zero_grad()
 
+        # better to use a dict for this
+        output = model(
+            images,
+            use_consistency_loss=use_consistency_loss,
+            extended_consistency_loss=extended_consistency_loss,
+            detached_latents=detached_latents,
+        )
         (
             predicted_images,
             predicted_latents,
@@ -75,12 +83,10 @@ def one_epoch(
             sampled_figures,
             z_sampled,
             predicted_sampled_images,
-        ) = model(
-            images,
-            use_consistency_loss=use_consistency_loss,
-            extended_consistency_loss=extended_consistency_loss,
-            detached_latents=detached_latents,
-        )
+        ) = output[:8]
+
+        if model.model_name == "monet":
+            monet_loss = output[8]
 
         # calculate slots loss and r2 score for supervised models
         if not unsupervised_mode:
@@ -100,6 +106,8 @@ def one_epoch(
         reconstruction_loss = F.mse_loss(predicted_images, images, reduction="sum")
         accum_reconstruction_loss += reconstruction_loss.item() / n_samples
 
+        if model.model_name == "monet":
+            reconstruction_loss = monet_loss
         # add to total loss
         total_loss += reconstruction_loss * reconstruction_term_weight
 
@@ -108,26 +116,29 @@ def one_epoch(
             z_sampled, predicted_z_sampled, device, reduction="sum"
         )
 
-        accum_encoder_consistency_loss += consistency_encoder_loss.item() / n_samples
+        accum_consistency_encoder_loss += consistency_encoder_loss.item() / n_samples
 
         consistency_decoder_loss = F.mse_loss(
             predicted_sampled_images, sampled_images, reduction="sum"
         )
-        accum_decoder_consistency_loss += consistency_decoder_loss.item() / n_samples
+        accum_consistency_decoder_loss += consistency_decoder_loss.item() / n_samples
 
         consistency_loss = consistency_encoder_loss * consistency_encoder_term_weight
         # add to consistency loss only if extended_consistency_loss is True
         if extended_consistency_loss:
             consistency_loss += (
-                consistency_decoder_loss * consistency_decoder_term_weight
+                consistency_decoder_loss
+                * consistency_decoder_term_weight
+                * extended_consistency_loss
             )
 
         if consistency_scheduler:
-            consistency_loss *= min(
-                consistency_term_weight, epoch / consistency_scheduler_step
+            consistency_loss *= (
+                min(consistency_term_weight, epoch / consistency_scheduler_step)
+                * use_consistency_loss
             )
         else:
-            consistency_loss *= consistency_term_weight
+            consistency_loss *= consistency_term_weight * use_consistency_loss
 
         accum_consistency_loss += consistency_loss.item() / n_samples
 
@@ -148,8 +159,8 @@ def one_epoch(
         accum_consistency_loss,
         accum_r2_score,
         accum_slots_loss,
-        accum_encoder_consistency_loss,
-        accum_decoder_consistency_loss,
+        accum_consistency_encoder_loss,
+        accum_consistency_decoder_loss,
     )
     if epoch % freq == 0:
         wandb_log(
@@ -264,13 +275,14 @@ def run(
             num_iterations=3,
             hid_dim=n_slot_latents,
         ).to(device)
+    elif model_name == "Monet":
+        model = src.models.get_monet_model(n_slots, n_slot_latents, device)
 
     wandb.watch(model)
-    optimizer = torch.optim.Adam(model.parameters(), lr=lr)
 
-    scheduler = torch.optim.lr_scheduler.StepLR(
-        optimizer, step_size=lr_scheduler_step, gamma=0.5
-    )
+    # warmup
+    optimizer = torch.optim.AdamW(model.parameters(), lr=1e-7, weight_decay=0.001)
+    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=2)
 
     for epoch in range(1, epochs + 1):
         total_loss, reconstruction_loss, slots_loss, r2_score = one_epoch(
@@ -282,13 +294,19 @@ def run(
             **passed_args,
         )
 
-        if scheduler.get_last_lr()[0] > 1e-7:
+        if scheduler.get_last_lr()[0] >= 1e-7:
             scheduler.step()
+
+        if scheduler.get_last_lr()[0] > lr:
+            optimizer.param_groups[0]["lr"] = lr
+            scheduler = torch.optim.lr_scheduler.StepLR(
+                optimizer, step_size=lr_scheduler_step, gamma=0.5
+            )
 
         print("Learning rate: ", optimizer.param_groups[0]["lr"])
 
         if epoch % 20 == 0:
-            if model_name in ["SlotAttention", "SlotMLPAdditive"] and epoch % 500 == 0:
+            if model_name in ["SlotAttention", "SlotMLPAdditive"] and epoch % 100 == 0:
                 id_score_id, id_score_ood = metrics.identifiability_score(
                     model,
                     n_slot_latents,
