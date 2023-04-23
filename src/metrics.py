@@ -142,16 +142,17 @@ def identifiability_score(
             true_latents = true_latents.to(device)
 
             with torch.no_grad():
-                (
-                    predicted_images,
-                    predicted_latents,
-                    predicted_figures,
-                    sampled_images,
-                    predicted_z_sampled,
-                    sampled_figures,
-                    z_sampled,
-                    predicted_sampled_images,
-                ) = model(images)
+                output = model(images)
+            (
+                predicted_images,
+                predicted_latents,
+                predicted_figures,
+                sampled_images,
+                predicted_z_sampled,
+                sampled_figures,
+                z_sampled,
+                predicted_sampled_images,
+            ) = output[:8]
 
             mapped_latents = torch.stack(
                 [mlp(true_latents[:, i, :]) for i in range(n_slots)], dim=1
