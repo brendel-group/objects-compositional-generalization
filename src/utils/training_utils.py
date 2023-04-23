@@ -44,9 +44,6 @@ def set_seed(seed):
     torch.backends.cudnn.benchmark = False
 
 
-from typing import Tuple
-
-
 def print_metrics_to_console(
     epoch: int,
     accum_total_loss: float,

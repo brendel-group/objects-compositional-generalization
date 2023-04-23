@@ -12,7 +12,9 @@ def get_monet_model(num_slots, latent_size, device):
     )
     config = omegaconf.OmegaConf.load(path)
     config.model.latent_size = latent_size
-    config.model.num_slots = num_slots + 1
+    config.model.encoder_params.mlp_output_size = latent_size * 2
+    config.model.decoder_params.input_channels = latent_size + 2
+    config.model.num_slots = num_slots
 
     model = hydra.utils.instantiate(config.model).to(device)
     return model

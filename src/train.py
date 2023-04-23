@@ -275,7 +275,7 @@ def run(
             num_iterations=3,
             hid_dim=n_slot_latents,
         ).to(device)
-    elif model_name == "Monet":
+    elif model_name == "MONet":
         model = src.models.get_monet_model(n_slots, n_slot_latents, device)
 
     wandb.watch(model)
@@ -306,7 +306,7 @@ def run(
         print("Learning rate: ", optimizer.param_groups[0]["lr"])
 
         if epoch % 20 == 0:
-            if model_name in ["SlotAttention", "SlotMLPAdditive"] and epoch % 100 == 0:
+            if model_name in ["SlotAttention", "SlotMLPAdditive", "MONet"] and epoch % 100 == 0:
                 id_score_id, id_score_ood = metrics.identifiability_score(
                     model,
                     n_slot_latents,
