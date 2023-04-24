@@ -12,7 +12,7 @@ import src.metrics as metrics
 import src.models
 import src.utils.data_utils as data_utils
 import src.utils.training_utils as training_utils
-from src.utils.wandb_utils import wandb_log, wandb_log_code
+import src.utils.wandb_utils as wandb_utils
 
 from .models import base_models, slot_attention
 
@@ -34,6 +34,7 @@ def one_epoch(
     consistency_decoder_term_weight=1,
     consistency_scheduler=False,
     consistency_scheduler_step=200,
+    consistency_ignite_epoch=0,
     use_consistency_loss=True,
     extended_consistency_loss=False,
     detached_latents=False,
@@ -132,9 +133,12 @@ def one_epoch(
                 * extended_consistency_loss
             )
 
-        if consistency_scheduler:
+        if consistency_scheduler and epoch >= consistency_ignite_epoch:
             consistency_loss *= (
-                min(consistency_term_weight, epoch / consistency_scheduler_step)
+                min(
+                    consistency_term_weight,
+                    (epoch - consistency_ignite_epoch) / consistency_scheduler_step,
+                )
                 * use_consistency_loss
             )
         else:
@@ -142,7 +146,7 @@ def one_epoch(
 
         accum_consistency_loss += consistency_loss.item() / n_samples
 
-        if use_consistency_loss:
+        if use_consistency_loss and epoch >= consistency_ignite_epoch:
             # add to total loss
             total_loss += consistency_loss
 
@@ -163,7 +167,7 @@ def one_epoch(
         accum_consistency_decoder_loss,
     )
     if epoch % freq == 0:
-        wandb_log(
+        wandb_utils.wandb_log(
             **locals(),
         )
 
@@ -189,6 +193,7 @@ def run(
     consistency_decoder_term_weight,
     consistency_scheduler,
     consistency_scheduler_step,
+    consistency_ignite_epoch,
     use_consistency_loss,
     extended_consistency_loss,
     unsupervised_mode,
@@ -203,17 +208,18 @@ def run(
     sample_mode_test_ood,
     delta,
     seed,
+    load_checkpoint,
 ):
     """
     Run the training and testing. Currently only supports SpritesWorld dataset.
     Check main.py for the description of the parameters.
     """
-    passed_args = locals().copy()
-    wandb_config = passed_args
+    signature_args = locals().copy()
+    wandb_config = signature_args
     wandb.init(config=wandb_config, project="object_centric_ood")
     wandb.define_metric("test_ID reconstruction loss", summary="min")
     wandb.define_metric("test_OOD reconstruction loss", summary="min")
-    wandb_log_code(wandb.run)
+    wandb_utils.wandb_log_code(wandb.run)
 
     time_created = time.strftime("%Y-%m-%d_%H-%M-%S", time.localtime())
     training_utils.set_seed(seed)
@@ -229,9 +235,9 @@ def run(
         path=path,
     )
 
-    train_loader = spriteworld_wrapper.get_train_loader(**passed_args)
-    test_loader_id = spriteworld_wrapper.get_test_id_loader(**passed_args)
-    test_loader_ood = spriteworld_wrapper.get_test_ood_loader(**passed_args)
+    train_loader = spriteworld_wrapper.get_train_loader(**signature_args)
+    test_loader_id = spriteworld_wrapper.get_test_id_loader(**signature_args)
+    test_loader_ood = spriteworld_wrapper.get_test_ood_loader(**signature_args)
 
     ##### Loading Identifiability Data #####
 
@@ -243,13 +249,13 @@ def run(
     spriteworld_wrapper.identifiability_path = identifiability_path
 
     identifiability_train_loader = spriteworld_wrapper.get_identifiability_train_loader(
-        **passed_args
+        **signature_args
     )
     identifiability_test_id_loader = (
-        spriteworld_wrapper.get_identifiability_test_id_loader(**passed_args)
+        spriteworld_wrapper.get_identifiability_test_id_loader(**signature_args)
     )
     identifiability_test_ood_loader = (
-        spriteworld_wrapper.get_identifiability_test_ood_loader(**passed_args)
+        spriteworld_wrapper.get_identifiability_test_ood_loader(**signature_args)
     )
     #######################################
 
@@ -284,14 +290,19 @@ def run(
     optimizer = torch.optim.AdamW(model.parameters(), lr=1e-7, weight_decay=0.001)
     scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=2)
 
-    for epoch in range(1, epochs + 1):
+    start_epoch = 1
+    if load_checkpoint:
+        start_epoch, model, optimizer, scheduler = training_utils.load_checkpoint(
+            model, optimizer, scheduler, load_checkpoint
+        )
+    for epoch in range(start_epoch, epochs + 1):
         total_loss, reconstruction_loss, slots_loss, r2_score = one_epoch(
             model,
             train_loader,
             optimizer,
             mode="train",
             epoch=epoch,
-            **passed_args,
+            **signature_args,
         )
 
         if scheduler.get_last_lr()[0] >= 1e-7:
@@ -306,7 +317,10 @@ def run(
         print("Learning rate: ", optimizer.param_groups[0]["lr"])
 
         if epoch % 20 == 0:
-            if model_name in ["SlotAttention", "SlotMLPAdditive", "MONet"] and epoch % 100 == 0:
+            if (
+                model_name in ["SlotAttention", "SlotMLPAdditive", "MONet"]
+                and epoch % 100 == 0
+            ):
                 id_score_id, id_score_ood = metrics.identifiability_score(
                     model,
                     n_slot_latents,
@@ -334,7 +348,7 @@ def run(
                 optimizer,
                 mode="test_ID",
                 epoch=epoch,
-                **passed_args,
+                **signature_args,
             )
             (
                 ood_total_loss,
@@ -347,7 +361,7 @@ def run(
                 optimizer,
                 mode="test_OOD",
                 epoch=epoch,
-                **passed_args,
+                **signature_args,
             )
 
             if id_reconstruction_loss < min_reconstruction_loss_ID:
@@ -355,8 +369,9 @@ def run(
                 print(
                     f"\nNew best ID model!\nEpoch: {epoch}\nID reconstruction loss: {id_reconstruction_loss}\n"
                 )
-                torch.save(
-                    model.state_dict(), f"{model_name}_{time_created}_best_id_model.pt"
+                training_utils.save_checkpoint(
+                    **locals(),
+                    checkpoint_name=f"best_id_model_{sample_mode_train}",
                 )
 
             if ood_reconstruction_loss < min_reconstruction_loss_OOD:
@@ -364,8 +379,12 @@ def run(
                 print(
                     f"\nNew best OOD model!\nEpoch: {epoch}\nOOD reconstruction loss: {ood_reconstruction_loss}\n"
                 )
-                torch.save(
-                    model.state_dict(), f"{model_name}_{time_created}_best_ood_model.pt"
+                training_utils.save_checkpoint(
+                    **locals(),
+                    checkpoint_name=f"best_ood_model_{sample_mode_train}",
                 )
 
-    torch.save(model.state_dict(), f"{model_name}_{time_created}_last_train_model.pt")
+    training_utils.save_checkpoint(
+        **locals(),
+        checkpoint_name=f"last_train_model_{sample_mode_train}",
+    )

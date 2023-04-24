@@ -12,8 +12,8 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--model_name",
-        choices=["SlotMLPAdditive", "SlotAttention", "Monet"],
-        default="Monet",
+        choices=["SlotMLPAdditive", "SlotAttention", "MONet"],
+        default="MONet",
         help="Model to use. One of the models defined in base_models.py.",
     )
     parser.add_argument(
@@ -44,9 +44,11 @@ if __name__ == "__main__":
         "--epochs", type=int, default=3000, help="Number of epochs to train for."
     )
     parser.add_argument(
-        "--batch_size", type=int, default=64, help="Batch size to use."
+        "--batch_size", type=int, default=128, help="Batch size to use."
     )
-    parser.add_argument("--lr", type=float, default=0.0001, help="Learning rate to use.")
+    parser.add_argument(
+        "--lr", type=float, default=0.0005, help="Learning rate to use."
+    )
     parser.add_argument(
         "--lr_scheduler_step",
         type=int,
@@ -78,27 +80,33 @@ if __name__ == "__main__":
         help="Weight for consistency decoder loss in consistency loss.",
     )
     parser.add_argument(
+        "--consistency_ignite_epoch",
+        type=int,
+        default=170,
+        help="Epoch to start consistency loss.",
+    )
+    parser.add_argument(
         "--consistency_scheduler",
         choices=[True, False],
-        default=True,
+        default=False,
         help="Whether to use consistency scheduler min(consistency_term_weight, epoch / 200).",
     )
     parser.add_argument(
         "--consistency_scheduler_step",
         type=int,
-        default=200,
+        default=100,
         help="How often to decrease consistency term weight.",
     )
     parser.add_argument(
         "--n_samples_train",
         type=int,
-        default=100,
+        default=100000,
         help="Number of samples in training dataset.",
     )
     parser.add_argument(
         "--n_samples_test",
         type=int,
-        default=100,
+        default=5000,
         help="Number of samples in testing dataset (ID and OOD).",
     )
     parser.add_argument(
@@ -120,7 +128,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--sample_mode_train",
         type=str,
-        default="random",
+        default="diagonal",
         help="Sampling mode for training dataset.",
     )
 
@@ -146,6 +154,13 @@ if __name__ == "__main__":
     )
 
     parser.add_argument("--seed", type=int, default=2023, help="Random seed to use.")
+
+    parser.add_argument(
+        "--load_checkpoint",
+        type=str,
+        default=None,
+        help="Path to checkpoint to load.",
+    )
 
     args = parser.parse_args()
     print(args)

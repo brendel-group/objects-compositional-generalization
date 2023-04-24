@@ -87,3 +87,33 @@ def print_metrics_to_console(
         )
     )
     print(f"{'=' * 120}")
+
+
+def save_checkpoint(
+    model,
+    optimizer,
+    scheduler,
+    model_name,
+    epoch,
+    time_created,
+    checkpoint_name,
+    **kwargs,
+):
+    checkpoint = {
+        "epoch": epoch,
+        "model_state_dict": model.state_dict(),
+        "optimizer_state_dict": optimizer.state_dict(),
+        "scheduler_state_dict": scheduler.state_dict(),
+    }
+    torch.save(
+        checkpoint, f"{model_name}_{time_created}_{checkpoint_name}_checkpoint.pt"
+    )
+
+
+def load_checkpoint(model, optimizer, scheduler, checkpoint_path):
+    checkpoint = torch.load(checkpoint_path)
+    model.load_state_dict(checkpoint["model_state_dict"])
+    optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
+    scheduler.load_state_dict(checkpoint["scheduler_state_dict"])
+    epoch = checkpoint["epoch"]
+    return model, optimizer, scheduler, epoch

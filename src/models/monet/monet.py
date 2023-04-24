@@ -70,13 +70,18 @@ class Monet(BaseModel):
             with nullcontext() if extended_consistency_loss else torch.no_grad():
                 hat_x_sampled, _, _, _ = self.decoding(zs)
 
+        figures = [xhs.squeeze()[:, slot_i, ...] for slot_i in range(self.num_slots)]
+        figures_sampled = [
+            figures_sampled.squeeze()[:, slot_i, ...]
+            for slot_i in range(self.num_slots)
+        ]
         return (
             recons,
             slot_means,
-            xhs.permute(1, 0, 2, 3, 4),
+            figures,
             x_sampled,
             hat_z_sampled,
-            figures_sampled.permute(1, 0, 2, 3, 4),
+            figures_sampled,
             z_sampled,
             hat_x_sampled,
             loss,
