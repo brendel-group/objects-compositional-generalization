@@ -7,14 +7,14 @@ import torch.distributions as dists
 from omegaconf import DictConfig
 from torch import Tensor, nn
 
-from src.models.monet.base_model import BaseModel
-from src.models.monet.shared.encoder_decoder import BroadcastDecoderNet, EncoderNet
-from src.models.monet.shared.unet import UNet
+from src.models.ocl.base_model import BaseModel
+from src.models.ocl.shared.encoder_decoder import BroadcastDecoderNet, EncoderNet
+from src.models.ocl.shared.unet import UNet
 from src.utils.training_utils import sample_z_from_latents
 
 
 @dataclass(eq=False, repr=False)
-class Monet(BaseModel):
+class MONet(BaseModel):
     latent_size: int
 
     num_blocks_unet: int

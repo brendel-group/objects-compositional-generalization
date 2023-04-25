@@ -1,6 +1,6 @@
 
 model:
-  _target_: src.models.monet.monet.Monet
+  _target_: src.models.ocl.monet.monet.MONet
   name: monet
   num_slots: 4
   bg_sigma: 0.06

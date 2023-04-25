@@ -86,8 +86,8 @@ def one_epoch(
             predicted_sampled_images,
         ) = output[:8]
 
-        if model.model_name == "monet":
-            monet_loss = output[8]
+        if model.model_name in ["monet", "genesis"]:
+            model_loss = output[8]
 
         # calculate slots loss and r2 score for supervised models
         if not unsupervised_mode:
@@ -107,8 +107,8 @@ def one_epoch(
         reconstruction_loss = F.mse_loss(predicted_images, images, reduction="sum")
         accum_reconstruction_loss += reconstruction_loss.item() / n_samples
 
-        if model.model_name == "monet":
-            reconstruction_loss = monet_loss
+        if model.model_name in ["monet", "genesis"]:
+            reconstruction_loss = model_loss
         # add to total loss
         total_loss += reconstruction_loss * reconstruction_term_weight
 
@@ -283,6 +283,8 @@ def run(
         ).to(device)
     elif model_name == "MONet":
         model = src.models.get_monet_model(n_slots, n_slot_latents, device)
+    elif model_name == "GENESIS":
+        model = src.models.get_genesis_model(n_slots, n_slot_latents, device)
 
     wandb.watch(model)
 
@@ -290,11 +292,13 @@ def run(
     optimizer = torch.optim.AdamW(model.parameters(), lr=1e-7, weight_decay=0.001)
     scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=2)
 
-    start_epoch = 1
+    start_epoch = 0
     if load_checkpoint:
-        start_epoch, model, optimizer, scheduler = training_utils.load_checkpoint(
+        model, optimizer, scheduler, start_epoch = training_utils.load_checkpoint(
             model, optimizer, scheduler, load_checkpoint
         )
+    start_epoch += 1
+
     for epoch in range(start_epoch, epochs + 1):
         total_loss, reconstruction_loss, slots_loss, r2_score = one_epoch(
             model,
@@ -318,7 +322,7 @@ def run(
 
         if epoch % 20 == 0:
             if (
-                model_name in ["SlotAttention", "SlotMLPAdditive", "MONet"]
+                model_name in ["SlotAttention", "SlotMLPAdditive", "MONet", "GENESIS"]
                 and epoch % 100 == 0
             ):
                 id_score_id, id_score_ood = metrics.identifiability_score(
