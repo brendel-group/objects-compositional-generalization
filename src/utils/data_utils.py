@@ -10,6 +10,8 @@ from torchvision import transforms as transforms
 
 from src import config, data
 
+data_path = "/mnt/qb/work/bethge/apanfilov27/object_centric_consistency_project"
+code_path = "/mnt/qb/work/bethge/apanfilov27/code/object_centric_ood"
 
 def dump_generated_dataset(dataset: torch.utils.data.TensorDataset, path: str):
     """Dumps generated dataset as torch tensors to a directory."""
@@ -29,10 +31,32 @@ def dump_generated_dataset(dataset: torch.utils.data.TensorDataset, path: str):
 class PreGeneratedDataset(torch.utils.data.Dataset):
     """Loads pre-generated SpriteWorldDataset from a directory."""
 
-    def __init__(self, path: str):
+    def __init__(self, path: str, n_samples: int = None):
         self.path = path
+        self.n_samples = n_samples
         self.images = torch.load(os.path.join(path, "images", "images.pt"))
         self.latents = torch.load(os.path.join(path, "latents", "latents.pt"))
+
+        if self.n_samples is not None:
+            self.images = self.images[: self.n_samples]
+            self.latents = self.latents[: self.n_samples]
+            # print("Truncated dataset to {} samples".format(self.n_samples))
+            # #
+            # # # 99 - 1 option
+            # #
+            # # get parent directory of path
+            # parent_dir = os.path.dirname(path)
+            # print(parent_dir)
+            # images_1 = torch.load(
+            #     os.path.join(parent_dir, "random", "images", "images.pt")
+            # )[: int(self.n_samples * 0.01)]
+            # latents_1 = torch.load(
+            #     os.path.join(parent_dir, "random", "latents", "latents.pt")
+            # )[: int(self.n_samples * 0.01)]
+            #
+            # # concatenate the two tensors
+            # self.images = torch.cat((self.images, images_1), 0)
+            # self.latents = torch.cat((self.latents, latents_1), 0)
 
     def __len__(self):
         return len(self.images)
@@ -41,10 +65,9 @@ class PreGeneratedDataset(torch.utils.data.Dataset):
         return self.images[idx], self.latents[idx]
 
 
-def load_identifiability_dataset(path: str, min_offset, scale):
+def load_identifiability_dataset(path: str, min_offset, scale, n_samples_truncate=None):
     """Loads identifiability dataset from a directory."""
-
-    dataset = PreGeneratedDataset(path)
+    dataset = PreGeneratedDataset(path, n_samples_truncate)
 
     dataloader = torch.utils.data.DataLoader(
         dataset,
@@ -97,6 +120,7 @@ class SpritesWorldDataWrapper:
     def get_train_loader(
         self,
         n_samples_train,
+        n_samples_truncate,
         n_slots,
         sample_mode_train,
         delta,
@@ -108,7 +132,7 @@ class SpritesWorldDataWrapper:
             os.path.join(self.path, "train", sample_mode_train)
         ):
             train_dataset = PreGeneratedDataset(
-                os.path.join(self.path, "train", sample_mode_train)
+                os.path.join(self.path, "train", sample_mode_train), n_samples_truncate
             )
             print(
                 f"Train dataset successfully loaded from {os.path.join(self.path, 'train', sample_mode_train)}."
@@ -234,20 +258,23 @@ class SpritesWorldDataWrapper:
         else:
             raise ValueError("Identifiability path already set.")
 
-    def get_identifiability_train_loader(self, sample_mode_train, **kwargs):
+    def get_identifiability_train_loader(
+        self, sample_mode_train, n_samples_truncate, **kwargs
+    ):
         if self.identifiability_path is None:
             raise ValueError("Identifiability path not set.")
         return load_identifiability_dataset(
-            os.path.join(self.identifiability_path, sample_mode_train, "train"),
+            os.path.join(self.identifiability_path, "train", sample_mode_train),
             self.min_offset,
             self.scale,
+            n_samples_truncate,
         )
 
     def get_identifiability_test_id_loader(self, sample_mode_test_id, **kwargs):
         if self.identifiability_path is None:
             raise ValueError("Identifiability path not set.")
         return load_identifiability_dataset(
-            os.path.join(self.identifiability_path, sample_mode_test_id, "test_id"),
+            os.path.join(self.identifiability_path, "test", sample_mode_test_id),
             self.min_offset,
             self.scale,
         )
@@ -256,7 +283,7 @@ class SpritesWorldDataWrapper:
         if self.identifiability_path is None:
             raise ValueError("Identifiability path not set.")
         return load_identifiability_dataset(
-            os.path.join(self.identifiability_path, sample_mode_test_ood, "test_ood"),
+            os.path.join(self.identifiability_path, "test", sample_mode_test_ood),
             self.min_offset,
             self.scale,
         )

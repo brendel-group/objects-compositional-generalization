@@ -253,9 +253,8 @@ def plot_heatmap(
         gs[i].set_xticks([])
         gs[i].set_yticks([])
 
-    folder_name = "heatmaps"
-    os.makedirs(folder_name, exist_ok=True)
-    plt.savefig(f"{folder_name}/{save_name}")
+    os.makedirs(os.path.dirname(save_name), exist_ok=True)
+    plt.savefig(save_name)
     if show:
         plt.show()
     else:

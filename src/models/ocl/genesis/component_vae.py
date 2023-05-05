@@ -1,3 +1,4 @@
+from typing import Tuple
 from dataclasses import dataclass, field
 
 from omegaconf import DictConfig
@@ -21,7 +22,7 @@ class ComponentVAE(nn.Module):
         self.encoder = EncoderNet(**self.encoder_params)
         self.decoder = BroadcastDecoderNet(**self.decoder_params)
 
-    def encode(self, x: Tensor) -> distributions.Normal:
+    def encode(self, x: Tensor) -> Tuple[Tensor, Tensor, Tensor]:
         mu, sigma = self.encoder(x).chunk(2, dim=-1)
         sigma = softplus(sigma + 0.5)
         qz = distributions.Normal(mu, sigma)

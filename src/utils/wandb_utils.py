@@ -93,9 +93,12 @@ def wandb_log(
 
 def wandb_log_code(run):
     print(os.getcwd())
+    print(os.listdir(data_utils.code_path))
     run.log_code(
-        "/home/bethge/apanfilov27/tmp/object_centric_ood/src/",
-        include_fn=lambda path: path.endswith(".py"),
+        data_utils.code_path,
+        include_fn=lambda path: any(
+            path.endswith(ending) for ending in [".py", ".yaml"]
+        ),
     )
 
 
@@ -119,10 +122,9 @@ def __make_histogram(log_dict, model, title):
     min_offset = torch.cat([min_offset[:, :, :-4], min_offset[:, :, -3:-2]], dim=-1)
     scale = torch.cat([scale[:, :, :-4], scale[:, :, -3:-2]], dim=-1)
 
-    path = "/mnt/qb/work/bethge/apanfilov27"
-    if os.path.isdir(os.path.join(path, "traversed")):
+    if os.path.isdir(os.path.join(data_utils.data_path, "traversed")):
         traversed_dataset = data_utils.PreGeneratedDataset(
-            os.path.join(path, "traversed")
+            os.path.join(data_utils.data_path, "traversed")
         )
         print("Traversed dataset successfully loaded from disk.")
     else:
@@ -130,7 +132,7 @@ def __make_histogram(log_dict, model, title):
             initial_sample, n_steps=n_steps
         )
         data_utils.dump_generated_dataset(
-            traversed_dataset, os.path.join(path, "traversed")
+            traversed_dataset, os.path.join(data_utils.data_path, "traversed")
         )
 
     heatmap_loader = torch.utils.data.DataLoader(
@@ -164,9 +166,15 @@ def __make_histogram(log_dict, model, title):
         (x_line_left, y_line_left),
         (x_line_right, y_line_right),
         shape=n_steps,
-        save_name=f"{wandb.run.name}.png",
+        save_name=os.path.join(
+            data_utils.data_path, "heatmaps", f"{wandb.run.name}.png"
+        ),
         figsize=(6, 5),
         show=False,
     )
 
-    log_dict[f"{title}"] = [wandb.Image(f"heatmaps/{wandb.run.name}.png")]
+    log_dict[f"{title}"] = [
+        wandb.Image(
+            os.path.join(data_utils.data_path, "heatmaps", f"{wandb.run.name}.png")
+        )
+    ]

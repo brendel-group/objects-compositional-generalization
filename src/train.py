@@ -44,6 +44,7 @@ def one_epoch(
 ):
     """One epoch of training or testing. Please check main.py for keyword parameters descriptions'."""
     n_samples = len(dataloader.dataset)
+    print(f"Number of samples: {n_samples}")
     if mode == "train":
         model.train()
     elif mode in ["test_ID", "test_OOD"]:
@@ -52,6 +53,7 @@ def one_epoch(
         raise ValueError("mode must be either train or test")
 
     accum_total_loss = 0
+    accum_model_loss = 0
     accum_reconstruction_loss = 0
     accum_slots_loss = 0
     accum_r2_score = 0
@@ -88,6 +90,7 @@ def one_epoch(
 
         if model.model_name in ["monet", "genesis"]:
             model_loss = output[8]
+            accum_model_loss += model_loss.item() / n_samples
 
         # calculate slots loss and r2 score for supervised models
         if not unsupervised_mode:
@@ -155,6 +158,9 @@ def one_epoch(
             total_loss.backward()
             optimizer.step()
 
+    if model.model_name in ["monet", "genesis"]:
+        accum_total_loss -= accum_model_loss
+        accum_total_loss += accum_model_loss * dataloader.batch_size
     # logging utils
     training_utils.print_metrics_to_console(
         epoch,
@@ -199,6 +205,7 @@ def run(
     unsupervised_mode,
     detached_latents,
     n_samples_train,
+    n_samples_truncate,
     n_samples_test,
     n_slots,
     n_slot_latents,
@@ -209,14 +216,21 @@ def run(
     delta,
     seed,
     load_checkpoint,
+    test_freq=20,
 ):
     """
     Run the training and testing. Currently only supports SpritesWorld dataset.
     Check main.py for the description of the parameters.
     """
+    path = data_utils.data_path
+
     signature_args = locals().copy()
     wandb_config = signature_args
-    wandb.init(config=wandb_config, project="object_centric_ood")
+    wandb.init(
+        config=wandb_config,
+        project="object_centric_ood",
+        dir=os.path.join(data_utils.data_path, "wandb"),
+    )
     wandb.define_metric("test_ID reconstruction loss", summary="min")
     wandb.define_metric("test_OOD reconstruction loss", summary="min")
     wandb_utils.wandb_log_code(wandb.run)
@@ -226,7 +240,6 @@ def run(
 
     ##### Loading Data #####
     # TODO: Remove all loading from disk
-    path = "/mnt/qb/work/bethge/apanfilov27"
     # path = ""
     os.path.isdir(path)
     spriteworld_wrapper = data_utils.SpritesWorldDataWrapper(
@@ -320,7 +333,7 @@ def run(
 
         print("Learning rate: ", optimizer.param_groups[0]["lr"])
 
-        if epoch % 20 == 0:
+        if epoch % test_freq == 0:
             if (
                 model_name in ["SlotAttention", "SlotMLPAdditive", "MONet", "GENESIS"]
                 and epoch % 100 == 0

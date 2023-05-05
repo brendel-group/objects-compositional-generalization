@@ -1,3 +1,5 @@
+import os
+
 import numpy as np
 import torch
 
@@ -97,6 +99,7 @@ def save_checkpoint(
     epoch,
     time_created,
     checkpoint_name,
+    path,
     **kwargs,
 ):
     checkpoint = {
@@ -106,7 +109,12 @@ def save_checkpoint(
         "scheduler_state_dict": scheduler.state_dict(),
     }
     torch.save(
-        checkpoint, f"{model_name}_{time_created}_{checkpoint_name}_checkpoint.pt"
+        checkpoint,
+        os.path.join(
+            path,
+            "checkpoints",
+            f"{model_name}_{time_created}_{checkpoint_name}_checkpoint.pt",
+        ),
     )
 
 

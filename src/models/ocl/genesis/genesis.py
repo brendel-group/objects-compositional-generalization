@@ -232,25 +232,35 @@ class Genesis(BaseModel):
             component_vae_out,
             mask_vae_out,
         )
-        images = xhs.sum(dim=1)
+        figures = xhs * mask_vae_out["log_masks_hat"].exp()
+        images = figures.sum(dim=1)
 
         mu = torch.cat([mask_vae_out["mu"], component_vae_out["mu"]], dim=2)
+        # mu = component_vae_out["mu"]
         with nullcontext() if use_consistency_loss else torch.no_grad():
             z_sampled = sample_z_from_latents(mu.detach())
             z_sampled_component = z_sampled[:, :, self.mask_latent_size :]
+            # z_sampled_component = z_sampled
             with torch.no_grad() if detached_latents else nullcontext():
-                figures_sampled = self.decode(z_sampled_component)
+                xhs_sampled = self.decode(z_sampled_component)
+                figures_sampled = xhs_sampled * mask_vae_out["log_masks_hat"].exp()
                 x_sampled = figures_sampled.sum(dim=1)
 
             component_vae_out_sampled, mask_vae_out_sampled = self.encode(x_sampled)
             hat_z_sampled = torch.cat(
                 [mask_vae_out_sampled["mu"], component_vae_out_sampled["mu"]], dim=2
             )
+            # hat_z_sampled = component_vae_out_sampled["mu"]
             with nullcontext() if extended_consistency_loss else torch.no_grad():
-                hat_figures_sampled = self.decode(component_vae_out_sampled["z"])
-                hat_x_sampled = hat_figures_sampled.sum(dim=1)
+                hat_xhs_sampled = self.decode(component_vae_out_sampled["z"])
+                hat_x_sampled = (
+                    hat_xhs_sampled * mask_vae_out_sampled["log_masks_hat"].exp()
+                )
+                hat_x_sampled = hat_x_sampled.sum(dim=1)
 
-        figures = [xhs.squeeze()[:, slot_i, ...] for slot_i in range(self.num_slots)]
+        figures = [
+            figures.squeeze()[:, slot_i, ...] for slot_i in range(self.num_slots)
+        ]
         figures_sampled = [
             figures_sampled.squeeze()[:, slot_i, ...]
             for slot_i in range(self.num_slots)

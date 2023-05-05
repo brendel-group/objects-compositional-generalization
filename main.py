@@ -13,7 +13,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--model_name",
         choices=["SlotMLPAdditive", "SlotAttention", "MONet", "GENESIS"],
-        default="GENESIS",
+        default="SlotAttention",
         help="Model to use. One of the models defined in base_models.py.",
     )
     parser.add_argument(
@@ -41,13 +41,13 @@ if __name__ == "__main__":
         help="Detach latents from encoder or not.",
     )
     parser.add_argument(
-        "--epochs", type=int, default=200, help="Number of epochs to train for."
+        "--epochs", type=int, default=1000, help="Number of epochs to train for."
     )
     parser.add_argument(
         "--batch_size", type=int, default=128, help="Batch size to use."
     )
     parser.add_argument(
-        "--lr", type=float, default=0.0005, help="Learning rate to use."
+        "--lr", type=float, default=0.001, help="Learning rate to use."
     )
     parser.add_argument(
         "--lr_scheduler_step",
@@ -64,19 +64,19 @@ if __name__ == "__main__":
     parser.add_argument(
         "--consistency_term_weight",
         type=float,
-        default=0.01,
+        default=1.0,
         help="Weight for consistency term in consistency loss.",
     )
     parser.add_argument(
         "--consistency_encoder_term_weight",
         type=float,
-        default=1.0,
+        default=0.1,
         help="Weight for consistency encoder loss in consistency loss.",
     )
     parser.add_argument(
         "--consistency_decoder_term_weight",
         type=float,
-        default=1.0,
+        default=1,
         help="Weight for consistency decoder loss in consistency loss.",
     )
     parser.add_argument(
@@ -89,24 +89,30 @@ if __name__ == "__main__":
         "--consistency_scheduler",
         choices=[True, False],
         default=False,
-        help="Whether to use consistency scheduler min(consistency_term_weight, epoch / 200).",
+        help="Whether to use consistency scheduler min(consistency_term_weight, epoch / consistency_scheduler).",
     )
     parser.add_argument(
         "--consistency_scheduler_step",
         type=int,
-        default=100,
+        default=200,
         help="How often to decrease consistency term weight.",
     )
     parser.add_argument(
         "--n_samples_train",
         type=int,
-        default=100,
+        default=100000,
         help="Number of samples in training dataset.",
+    )
+    parser.add_argument(
+        "--n_samples_truncate",
+        type=int,
+        default=70000,
+        help="Number of samples to truncate training dataset to.",
     )
     parser.add_argument(
         "--n_samples_test",
         type=int,
-        default=100,
+        default=5000,
         help="Number of samples in testing dataset (ID and OOD).",
     )
     parser.add_argument(
@@ -128,7 +134,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--sample_mode_train",
         type=str,
-        default="random",
+        default="diagonal",
         help="Sampling mode for training dataset.",
     )
 

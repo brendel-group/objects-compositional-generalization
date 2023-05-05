@@ -6,7 +6,7 @@ import torch
 import tqdm
 from spriteworld import environment, renderers, sprite, tasks
 
-from .config import Config, SpriteWorldConfig
+from .config import Config, SpriteWorldConfig, KubricConfig
 from .utils import sampling_utils
 
 warnings.filterwarnings("ignore", module="spriteworld")
@@ -272,3 +272,104 @@ class SpriteWorldDataset(torch.utils.data.TensorDataset):
             generated_shape = torch.rand(self.n_slots)
             generated_shape = torch.floor(len(self.cfg["shape"]) * generated_shape)
         return generated_shape
+
+
+class KubricDataset(torch.utils.data.TensorDataset):
+    def __init__(
+        self,
+        n_samples: int,
+        n_slots: int,
+        cfg: KubricConfig,
+        sample_mode: str = "random",
+        delta: float = 1,
+        z: Optional[torch.Tensor] = None,
+    ):
+        self.n_samples = n_samples
+        self.n_slots = n_slots
+        self.cfg = cfg
+        self.sample_mode = sample_mode
+        self.delta = delta
+        self.z = z
+        self.__generate_ind = 0
+
+        if self.z is None:
+            self.z = sample_latents(n_samples, n_slots, cfg, sample_mode, delta)
+
+        self.z = self.update_z(self.z)
+
+        super().__init__(self.z)
+
+    def __adjust_x_coord(self, generated_x) -> torch.Tensor:
+        """
+        Generates x coordinate separately to avoid overlapping sprites.
+        """
+
+        if self.sample_mode in ["diagonal", "off_diagonal"] and self.n_slots > 1:
+            if self.sample_mode == "diagonal":
+                x_diag = torch.repeat_interleave(torch.rand(1), self.n_slots)
+
+                noise = torch.randn(self.n_slots + 2)
+                noise = noise / torch.norm(noise, keepdim=True)
+                noise = noise[: self.n_slots]
+
+                ort_vec = noise - x_diag * torch.dot(noise, x_diag) / torch.dot(
+                    x_diag, x_diag
+                )
+                ort_vec = ort_vec / torch.norm(ort_vec, keepdim=True)
+                # why n - 1 here? because we sample "radius" not in the original space, but in the embedded
+                ort_vec *= torch.pow(torch.rand(1), 1 / (self.n_slots - 1)) * self.delta
+                x_diag += ort_vec
+
+            elif self.sample_mode == "off_diagonal":
+                _n = 10
+                z_out = torch.Tensor(0, self.n_slots, 1)
+                while z_out.shape[0] < _n:
+                    z_sampled = torch.rand(_n, self.n_slots, 1)
+                    diag = torch.ones(_n, self.n_slots, 1)
+                    ort_vec = z_sampled - diag * (z_sampled * diag).sum(
+                        axis=1, keepdim=True
+                    ) / (diag * diag).sum(axis=1, keepdim=True)
+                    off_d_mask = (ort_vec.norm(dim=1) > self.delta).flatten(1).all(1)
+                    z_sampled = z_sampled[off_d_mask]
+
+                    z_out = torch.cat([z_out, z_sampled])
+                x_diag = z_out[:1].squeeze()
+
+            k = 1 / self.n_slots
+            const = torch.FloatTensor([k * i for i in range(self.n_slots)])
+            x_diag += const
+            x_diag = x_diag % 1
+
+            x_scaled = (
+                self.cfg["x"].min + (self.cfg["x"].max - self.cfg["x"].min) * x_diag
+            )
+            return x_scaled
+        else:
+            return generated_x
+
+    def __adjust_shape(self, generated_shape) -> torch.Tensor:
+        """
+        Generates shape separately to avoid same figures for off_diagonal and pure_off_diagonal sampling.
+        """
+        while (
+            sum(
+                [
+                    generated_shape[0].item() == generated_shape[i].item()
+                    for i in range(self.n_slots)
+                ]
+            )
+            == self.n_slots
+        ):
+            generated_shape = torch.rand(self.n_slots)
+            generated_shape = torch.floor(len(self.cfg["shape"]) * generated_shape)
+        return generated_shape
+
+    def update_z(self, z):
+        for i in range(len(z)):
+            z[i, :, 0] = self.__adjust_x_coord(z[i, :, 0])
+            z[i, :, 1] = self.__adjust_x_coord(z[i, :, 1])
+
+            if self.sample_mode in ["off_diagonal"]:
+                z[i, :, -1] = self.__adjust_shape(z[i, :, -1])
+
+        return z
