@@ -11,3 +11,4 @@ torchmetrics
 wandb
 tqdm
 hydra-core
+Pillow

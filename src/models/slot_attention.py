@@ -2,12 +2,14 @@
 Slot Attention-based auto-encoder for object discovery. Code provided by Jack Brady.
 """
 from contextlib import nullcontext
+from typing import Dict, Any
 
 import numpy as np
 import torch
 import torch.nn.functional as F
-from src.utils.training_utils import sample_z_from_latents
 from torch import nn
+
+from src.utils.training_utils import sample_z_from_latents
 
 
 class SlotAttentionAutoEncoder(nn.Module):
@@ -81,7 +83,7 @@ class SlotAttentionAutoEncoder(nn.Module):
             xhs.squeeze()[:, slot_i, ...].permute(0, 3, 1, 2)
             for slot_i in range(self.num_slots)
         ]
-        return hat_x, figures
+        return hat_x, figures, masks
 
     def forward(
         self,
@@ -89,30 +91,32 @@ class SlotAttentionAutoEncoder(nn.Module):
         use_consistency_loss=False,
         extended_consistency_loss=False,
         detached_latents=False,
-    ):
+    ) -> Dict[str, Any]:
         hat_z = self.encode(x)
-        hat_x, figures = self.decode(hat_z)
+        hat_x, figures, masks = self.decode(hat_z)
 
         # we always want to look at the consistency loss, but we not always want to backpropagate through consistency part
         with nullcontext() if use_consistency_loss else torch.no_grad():
             z_sampled = sample_z_from_latents(hat_z.detach())
             with torch.no_grad() if detached_latents else nullcontext():
-                x_sampled, figures_sampled = self.decode(z_sampled)
+                x_sampled, figures_sampled, sampled_masks = self.decode(z_sampled)
 
             hat_z_sampled = self.encode(x_sampled)
             with nullcontext() if extended_consistency_loss else torch.no_grad():
-                hat_x_sampled, _ = self.decode(hat_z_sampled)
+                hat_x_sampled, _, _ = self.decode(hat_z_sampled)
 
-            return (
-                hat_x,
-                hat_z,
-                figures,
-                x_sampled,
-                hat_z_sampled,
-                figures_sampled,
-                z_sampled,
-                hat_x_sampled,
-            )
+            return {
+                "reconstructed_image": hat_x,
+                "predicted_latents": hat_z,
+                "reconstructed_figures": figures,
+                "reconstructed_masks": masks.permute(1, 0, 4, 2, 3),
+                "sampled_image": x_sampled,
+                "sampled_figures": figures_sampled,
+                "sampled_masks": sampled_masks.permute(1, 0, 4, 2, 3),
+                "sampled_latents": z_sampled,
+                "reconstructed_sampled_image": hat_x_sampled,
+                "predicted_sampled_latents": hat_z_sampled,
+            }
 
 
 class SlotAttention(nn.Module):

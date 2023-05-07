@@ -1,6 +1,6 @@
 from contextlib import nullcontext
 from dataclasses import dataclass, field
-from typing import Tuple
+from typing import Tuple, Dict, Any
 
 import torch
 import torch.distributions as dists
@@ -53,7 +53,7 @@ class MONet(BaseModel):
         use_consistency_loss=False,
         extended_consistency_loss=False,
         detached_latents=False,
-    ):
+    ) -> Dict[str, Any]:
         # input: (B, 3, H, W)
 
         zs, kl_zs, slot_means, masks, log_masks = self.encoding(x)
@@ -63,7 +63,7 @@ class MONet(BaseModel):
         with nullcontext() if use_consistency_loss else torch.no_grad():
             z_sampled = sample_z_from_latents(slot_means.detach())
             with torch.no_grad() if detached_latents else nullcontext():
-                x_sampled, figures_sampled, _, _ = self.decoding(z_sampled)
+                x_sampled, figures_sampled, masks_sampled, _ = self.decoding(z_sampled)
 
             zs, _, hat_z_sampled, _, _ = self.encoding(x_sampled)
 
@@ -75,17 +75,29 @@ class MONet(BaseModel):
             figures_sampled.squeeze()[:, slot_i, ...]
             for slot_i in range(self.num_slots)
         ]
-        return (
-            recons,
-            slot_means,
-            figures,
-            x_sampled,
-            hat_z_sampled,
-            figures_sampled,
-            z_sampled,
-            hat_x_sampled,
-            loss,
-        )
+        return {
+            "reconstructed_image": recons,
+            "predicted_latents": slot_means,
+            "reconstructed_figures": figures,
+            "reconstructed_masks": masks_pred,
+            "sampled_image": x_sampled,
+            "sampled_figures": figures_sampled,
+            "sampled_latents": z_sampled,
+            "reconstructed_sampled_image": hat_x_sampled,
+            "predicted_sampled_latents": hat_z_sampled,
+            "loss": loss,
+        }
+        # return (
+        #     recons,
+        #     slot_means,
+        #     figures,
+        #     x_sampled,
+        #     hat_z_sampled,
+        #     figures_sampled,
+        #     z_sampled,
+        #     hat_x_sampled,
+        #     loss,
+        # )
 
     def encoding(self, x):
         # Forward pass through recurrent attention network.

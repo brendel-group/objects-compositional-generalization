@@ -1,10 +1,10 @@
 from contextlib import nullcontext
-from typing import List, Tuple
+from typing import Dict, Any
 
 import torch
-from src.utils.training_utils import sample_z_from_latents
 
-from . import models_utils
+from src.utils.training_utils import sample_z_from_latents
+from . import utils
 
 
 class SlotEncoder(torch.nn.Module):
@@ -12,7 +12,7 @@ class SlotEncoder(torch.nn.Module):
         super(SlotEncoder, self).__init__()
         self.n_slots = n_slots
         self.n_slot_latents = n_slot_latents
-        self.encoder = models_utils.get_encoder(in_channels, n_slots * n_slot_latents)
+        self.encoder = utils.get_encoder(in_channels, n_slots * n_slot_latents)
 
     def forward(self, x):
         x = self.encoder(x)
@@ -25,7 +25,7 @@ class TwinHeadedSlotEncoder(torch.nn.Module):
         super(TwinHeadedSlotEncoder, self).__init__()
         self.n_slots = n_slots
         self.n_slot_latents = n_slot_latents
-        self.encoder_shared, self.encoder_separate = models_utils.get_twin_head_encoder(
+        self.encoder_shared, self.encoder_separate = utils.get_twin_head_encoder(
             in_channels, n_slots, n_slot_latents
         )
 
@@ -51,7 +51,7 @@ class SlotMLPAdditiveDecoder(torch.nn.Module):
         super(SlotMLPAdditiveDecoder, self).__init__()
         self.n_slots = n_slots
         self.n_slot_latents = n_slot_latents
-        self.decoder = models_utils.get_decoder(n_slot_latents, in_channels)
+        self.decoder = utils.get_decoder(n_slot_latents, in_channels)
         self.model_name = "SlotMLPAdditiveDecoder"
 
     def forward(self, latents):
@@ -78,7 +78,7 @@ class SlotMLPMonolithicDecoder(torch.nn.Module):
         super(SlotMLPMonolithicDecoder, self).__init__()
         self.n_slots = n_slots
         self.n_slot_latents = n_slot_latents
-        self.decoder = models_utils.get_decoder(n_slots * n_slot_latents, in_channels)
+        self.decoder = utils.get_decoder(n_slots * n_slot_latents, in_channels)
         self.model_name = "SlotMLPMonolithicDecoder"
 
     def forward(self, latents):
@@ -144,16 +144,7 @@ class SlotMLPAdditive(torch.nn.Module):
         use_consistency_loss=False,
         extended_consistency_loss=False,
         detached_latents=False,
-    ) -> Tuple[
-        torch.Tensor,
-        torch.Tensor,
-        List[torch.Tensor],
-        torch.Tensor,
-        torch.Tensor,
-        List[torch.Tensor],
-        torch.Tensor,
-        torch.Tensor,
-    ]:
+    ) -> Dict[str, Any]:
         """
         Compute forward pass of the model.
         Reconstruction: \hat{x} = sum_{i=1}^{n_slots} f(z_i)
@@ -190,16 +181,16 @@ class SlotMLPAdditive(torch.nn.Module):
             with nullcontext() if extended_consistency_loss else torch.no_grad():
                 hat_x_sampled, _ = self.decoder(hat_z_sampled)
 
-        return (
-            hat_x,
-            hat_z,
-            figures,
-            x_sampled,
-            hat_z_sampled,
-            figures_sampled,
-            z_sampled,
-            hat_x_sampled,
-        )
+        return {
+            "reconstructed_image": hat_x,
+            "predicted_latents": hat_z,
+            "reconstructed_figures": figures,
+            "sampled_image": x_sampled,
+            "sampled_figures": figures_sampled,
+            "sampled_latents": z_sampled,
+            "reconstructed_sampled_image": hat_x_sampled,
+            "predicted_sampled_latents": hat_z_sampled,
+        }
 
 
 class SlotMLPEncoder(torch.nn.Module):

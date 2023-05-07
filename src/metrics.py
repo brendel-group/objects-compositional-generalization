@@ -143,16 +143,8 @@ def identifiability_score(
 
             with torch.no_grad():
                 output = model(images)
-            (
-                predicted_images,
-                predicted_latents,
-                predicted_figures,
-                sampled_images,
-                predicted_z_sampled,
-                sampled_figures,
-                z_sampled,
-                predicted_sampled_images,
-            ) = output[:8]
+                predicted_latents = output["predicted_latents"]
+                predicted_figures = output["reconstructed_figures"]
 
             mapped_latents = torch.stack(
                 [mlp(true_latents[:, i, :]) for i in range(n_slots)], dim=1
@@ -198,16 +190,8 @@ def identifiability_score(
 
                 with torch.no_grad():
                     output = model(images)
-                    (
-                        predicted_images,
-                        predicted_latents,
-                        predicted_figures,
-                        sampled_images,
-                        predicted_z_sampled,
-                        sampled_figures,
-                        z_sampled,
-                        predicted_sampled_images,
-                    ) = output[:8]
+                    predicted_latents = output["predicted_latents"]
+                    predicted_figures = output["reconstructed_figures"]
 
                 mapped_latents = torch.stack(
                     [mlp(true_latents[:, i, :]) for i in range(n_slots)], dim=1

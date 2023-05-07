@@ -1,7 +1,6 @@
 import pytest
 
-from src import config
-from src import data
+from src.datasets import data
 
 
 @pytest.mark.parametrize(

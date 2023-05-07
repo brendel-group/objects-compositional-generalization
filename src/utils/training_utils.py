@@ -69,11 +69,11 @@ def print_metrics_to_console(
     accum_encoder_consistency_loss: The accumulated encoder consistency loss.
     accum_decoder_consistency_loss: The accumulated decoder consistency loss.
     """
-    print(f"{'=' * 120}")
+    print(f"{'=' * 130}")
     print(
         f"{'Epoch':<10}{'Avg. loss (Rec. + Cons. weighted)':<40}{'Cons. encoder loss':<25}{'Cons. decoder loss':<25}{'R2 score':<15}{'Slots loss':<15}"
     )
-    print(f"{'=' * 120}")
+    print(f"{'=' * 130}")
     print(
         "{:<10}{:<40}{:<25}{:<25}{:<15}{:<15}".format(
             " " + str(epoch),
@@ -88,7 +88,7 @@ def print_metrics_to_console(
             "",
         )
     )
-    print(f"{'=' * 120}")
+    print(f"{'=' * 130}")
 
 
 def save_checkpoint(

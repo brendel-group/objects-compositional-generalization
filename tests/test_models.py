@@ -1,5 +1,4 @@
-from src import config
-from src import data
+from src.datasets import data
 from src import models
 
 

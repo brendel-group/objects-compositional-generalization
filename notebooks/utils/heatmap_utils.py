@@ -9,10 +9,11 @@ import torchvision.transforms as transforms
 import tqdm
 from torch import nn
 
-from src import config, data
+from src.datasets import data
+import src.datasets.configs as data_configs
 
 transform = transforms.Compose([transforms.ToTensor()])
-default_cfg = config.SpriteWorldConfig()
+default_cfg = data_configs.SpriteWorldConfig()
 
 seed = 42
 random.seed(seed)

@@ -17,15 +17,21 @@ if __name__ == "__main__":
         help="Model to use. One of the models defined in base_models.py.",
     )
     parser.add_argument(
+        "--dataset_name",
+        choices=["dsprites", "kubric"],
+        default="kubric",
+        help="Dataset to use. All datasets are pre-generated and stored in data folder.",
+    )
+    parser.add_argument(
         "--use_consistency_loss",
         choices=[True, False],
-        default=True,
+        default=False,
         help="Whether to use consistency loss.",
     )
     parser.add_argument(
         "--extended_consistency_loss",
         choices=[True, False],
-        default=True,
+        default=False,
         help="Whether to use extended consistency loss.",
     )
     parser.add_argument(
@@ -41,14 +47,12 @@ if __name__ == "__main__":
         help="Detach latents from encoder or not.",
     )
     parser.add_argument(
-        "--epochs", type=int, default=1000, help="Number of epochs to train for."
+        "--epochs", type=int, default=500, help="Number of epochs to train for."
     )
     parser.add_argument(
         "--batch_size", type=int, default=128, help="Batch size to use."
     )
-    parser.add_argument(
-        "--lr", type=float, default=0.001, help="Learning rate to use."
-    )
+    parser.add_argument("--lr", type=float, default=0.001, help="Learning rate to use.")
     parser.add_argument(
         "--lr_scheduler_step",
         type=int,
@@ -106,7 +110,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--n_samples_truncate",
         type=int,
-        default=70000,
+        default=60000,
         help="Number of samples to truncate training dataset to.",
     )
     parser.add_argument(
@@ -134,7 +138,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--sample_mode_train",
         type=str,
-        default="diagonal",
+        default="random",
         help="Sampling mode for training dataset.",
     )
 
