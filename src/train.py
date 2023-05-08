@@ -2,7 +2,6 @@ import os.path
 import time
 
 import torch
-import torch.nn.functional as F
 import torch.utils.data
 
 import wandb
@@ -43,7 +42,6 @@ def one_epoch(
     **kwargs,
 ):
     """One epoch of training or testing. Please check main.py for keyword parameters descriptions'."""
-    n_samples = len(dataloader.dataset)
     print(f"Number of samples: {n_samples}")
     if mode == "train":
         model.train()
@@ -63,6 +61,8 @@ def one_epoch(
     accum_consistency_decoder_loss = 0
     for batch_idx, (images, true_latents) in enumerate(dataloader):
         total_loss = torch.tensor(0.0, device=device)
+        # adjust overall epoch loss to match mean over all samples
+        accum_adjustment = len(images) / len(dataloader.dataset)
 
         # first dimensions contain separate objects, last dimension is the final image ("sum" of objects)
         images = images[:, -1, ...].squeeze(1).to(device)
@@ -80,13 +80,15 @@ def one_epoch(
 
         if "loss" in output_dict:
             model_loss = output_dict["loss"]
-            accum_model_loss += model_loss.item() / n_samples
+            accum_model_loss += model_loss.item() * accum_adjustment
 
         # calculate reconstruction loss for all models with the decoder
-        reconstruction_loss = F.mse_loss(
-            output_dict["reconstructed_image"], images, reduction="sum"
+        reconstruction_loss = metrics.reconstruction_loss(
+            images, output_dict["reconstructed_image"]
         )
-        accum_reconstruction_loss += reconstruction_loss.item() / n_samples
+        accum_reconstruction_loss += (
+            reconstruction_loss.item() * accum_adjustment
+        )
 
         if model.model_name in ["monet", "genesis"]:
             reconstruction_loss = model_loss
@@ -96,15 +98,17 @@ def one_epoch(
         # calculate slots loss and r2 score for supervised models
         if not unsupervised_mode:
             slots_loss, inds = metrics.hungarian_slots_loss(
-                true_latents, output_dict["predicted_latents"], device, reduction="sum"
+                true_latents,
+                output_dict["predicted_latents"],
+                device,
             )
-            accum_slots_loss += slots_loss.item() / n_samples
+            accum_slots_loss += slots_loss.item() * accum_adjustment
 
             avg_r2, raw_r2 = metrics.r2_score(
                 true_latents, output_dict["predicted_latents"], inds
             )
-            accum_r2_score += avg_r2 * len(images) / n_samples
-            per_latent_r2_score += raw_r2 * len(images) / n_samples
+            accum_r2_score += avg_r2 * accum_adjustment
+            per_latent_r2_score += raw_r2 * accum_adjustment
 
             # add to total loss
             total_loss += slots_loss
@@ -114,17 +118,18 @@ def one_epoch(
             output_dict["sampled_latents"],
             output_dict["predicted_sampled_latents"],
             device,
-            reduction="sum",
         )
 
-        accum_consistency_encoder_loss += consistency_encoder_loss.item() / n_samples
-
-        consistency_decoder_loss = F.mse_loss(
-            output_dict["reconstructed_sampled_image"],
-            output_dict["sampled_image"],
-            reduction="sum",
+        accum_consistency_encoder_loss += (
+            consistency_encoder_loss.item() * accum_adjustment
         )
-        accum_consistency_decoder_loss += consistency_decoder_loss.item() / n_samples
+
+        consistency_decoder_loss = metrics.reconstruction_loss(
+            output_dict["sampled_image"], output_dict["reconstructed_sampled_image"]
+        )
+        accum_consistency_decoder_loss += (
+            consistency_decoder_loss.item() * accum_adjustment
+        )
 
         consistency_loss = consistency_encoder_loss * consistency_encoder_term_weight
         # add to consistency loss only if extended_consistency_loss is True
@@ -146,13 +151,13 @@ def one_epoch(
         else:
             consistency_loss *= consistency_term_weight * use_consistency_loss
 
-        accum_consistency_loss += consistency_loss.item() / n_samples
+        accum_consistency_loss += consistency_loss.item() * accum_adjustment
 
         if use_consistency_loss and epoch >= consistency_ignite_epoch:
             # add to total loss
             total_loss += consistency_loss
 
-        accum_total_loss += total_loss.item() / n_samples
+        accum_total_loss += total_loss.item() * accum_adjustment
         if mode == "train":
             total_loss.backward()
             optimizer.step()

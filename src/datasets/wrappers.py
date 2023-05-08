@@ -12,7 +12,7 @@ from src.datasets.utils import (
 
 
 class DataWrapper:
-    def __init__(self, path, load, save):
+    def __init__(self, path, save, load):
         self.path = path
         self.load = load
         self.save = save
@@ -45,8 +45,8 @@ class DataWrapper:
 class SpritesWorldDataWrapper(DataWrapper):
     """Wrapper for easy access to train/test loaders for SpritesWorldDataset only."""
 
-    def __init__(self, path, load, save):
-        super().__init__(path, load, save)
+    def __init__(self, path, save, load):
+        super().__init__(path, save, load)
         self.config = configs.SpriteWorldConfig()
         self.__scale = None
         self.__min_offset = None
@@ -166,7 +166,7 @@ class SpritesWorldDataWrapper(DataWrapper):
 
 
 class KubricWrapper(DataWrapper):
-    def __init__(self, path, load, save):
+    def __init__(self, path, save, load):
         super().__init__(path, save, load)
 
         self.config = configs.KubricConfig()

@@ -46,7 +46,7 @@ def hungarian_slots_loss(
     predicted_latents: torch.Tensor,
     device: str = "cpu",
     p: int = 2,
-    reduction: str = "sum",
+    reduction: str = "mean",
 ):
     """
     Computes pairwise distance between slots, matches slots with Hungarian algorithm and outputs
@@ -84,6 +84,17 @@ def hungarian_slots_loss(
         raise ValueError("Reduction type not supported.")
 
     return loss, transposed_indices
+
+
+def reconstruction_loss(target, prediction, reduction="mean"):
+    loss = (target - prediction).square()
+
+    if reduction == "mean":
+        loss = loss.mean(dim=0)
+    elif reduction == "sum":
+        loss = loss.sum(dim=0)
+
+    return loss.sum()
 
 
 def identifiability_score(
