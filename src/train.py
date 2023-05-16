@@ -36,13 +36,12 @@ def one_epoch(
     consistency_ignite_epoch=0,
     use_consistency_loss=True,
     extended_consistency_loss=False,
-    detached_latents=False,
     unsupervised_mode=False,
     freq=10,
     **kwargs,
 ):
     """One epoch of training or testing. Please check main.py for keyword parameters descriptions'."""
-    print(f"Number of samples: {n_samples}")
+    print(f"Number of samples: {len(dataloader.dataset)}")
     if mode == "train":
         model.train()
     elif mode in ["test_ID", "test_OOD", "test_RDM"]:
@@ -74,8 +73,7 @@ def one_epoch(
         output_dict = model(
             images,
             use_consistency_loss=use_consistency_loss,
-            extended_consistency_loss=extended_consistency_loss,
-            detached_latents=detached_latents,
+            extended_consistency_loss=extended_consistency_loss
         )
 
         if "loss" in output_dict:
@@ -86,9 +84,7 @@ def one_epoch(
         reconstruction_loss = metrics.reconstruction_loss(
             images, output_dict["reconstructed_image"]
         )
-        accum_reconstruction_loss += (
-            reconstruction_loss.item() * accum_adjustment
-        )
+        accum_reconstruction_loss += reconstruction_loss.item() * accum_adjustment
 
         if model.model_name in ["monet", "genesis"]:
             reconstruction_loss = model_loss
@@ -206,7 +202,6 @@ def run(
     use_consistency_loss,
     extended_consistency_loss,
     unsupervised_mode,
-    detached_latents,
     n_samples_train,
     n_samples_truncate,
     n_samples_test,
@@ -238,8 +233,8 @@ def run(
 
     for mode in ["ID", "OOD", "RDM"]:
         wandb.define_metric(f"test_{mode} reconstruction loss", summary="min")
-    wandb.define_metric("ID_score_ID", summary="min")
-    wandb.define_metric("ID_score_OOD", summary="min")
+    wandb.define_metric("ID_score_ID", summary="max")
+    wandb.define_metric("ID_score_OOD", summary="max")
     wandb_utils.wandb_log_code(wandb.run)
 
     time_created = time.strftime("%Y-%m-%d_%H-%M-%S", time.localtime())
@@ -271,8 +266,10 @@ def run(
     in_channels = 3
     if dataset_name == "dsprites":
         resolution = (64, 64)
+        ch_dim = 32  # originally 32
     elif dataset_name == "kubric":
         resolution = (128, 128)
+        ch_dim = 32  # originally 64
 
     if model_name == "SlotMLPAdditive":
         model = base_models.SlotMLPAdditive(in_channels, n_slots, n_slot_latents).to(
@@ -280,10 +277,16 @@ def run(
         )
     elif model_name == "SlotAttention":
         encoder = slot_attention.SlotAttentionEncoder(
-            resolution=resolution, hid_dim=n_slot_latents
+            resolution=resolution,
+            hid_dim=n_slot_latents,
+            ch_dim=ch_dim,
+            dataset_name=dataset_name,
         ).to(device)
         decoder = slot_attention.SlotAttentionDecoder(
-            hid_dim=n_slot_latents, resolution=resolution
+            hid_dim=n_slot_latents,
+            ch_dim=ch_dim,
+            resolution=resolution,
+            dataset_name=dataset_name,
         ).to(device)
         model = slot_attention.SlotAttentionAutoEncoder(
             encoder=encoder,
@@ -387,7 +390,7 @@ def run(
                 training_utils.save_checkpoint(
                     path=data_utils.data_path,
                     **locals(),
-                    checkpoint_name=f"best_id_model_{sample_mode_train}",
+                    checkpoint_name=f"best_id_model_{sample_mode_train}_{seed}",
                 )
 
             if ood_rec_loss < min_reconstruction_loss_OOD:
@@ -398,11 +401,11 @@ def run(
                 training_utils.save_checkpoint(
                     path=data_utils.data_path,
                     **locals(),
-                    checkpoint_name=f"best_ood_model_{sample_mode_train}",
+                    checkpoint_name=f"best_ood_model_{sample_mode_train}_{seed}",
                 )
 
     training_utils.save_checkpoint(
         path=data_utils.data_path,
         **locals(),
-        checkpoint_name=f"last_train_model_{sample_mode_train}",
+        checkpoint_name=f"last_train_model_{sample_mode_train}_{seed}",
     )

@@ -40,6 +40,8 @@ class SlotAttentionAutoEncoder(nn.Module):
             hidden_dim=64,
         )
 
+        self.spatial_broadcast = 64
+
     def encode(self, x):
         # `x` is an image which has shape: [batch_size, num_channels, width, height].
 
@@ -61,7 +63,7 @@ class SlotAttentionAutoEncoder(nn.Module):
             hat_z.reshape((-1, hat_z.shape[-1]))
             .unsqueeze(1)
             .unsqueeze(2)
-            .repeat((1, 8, 8, 1))
+            .repeat((1, self.spatial_broadcast, self.spatial_broadcast, 1))
         )
 
         # `out` has shape: [batch_size*num_slots, width, height, num_channels+1].
@@ -79,44 +81,57 @@ class SlotAttentionAutoEncoder(nn.Module):
         # `hat_x` has shape: [batch_size, num_channels, width, height].
         hat_x = torch.sum(xhs, dim=1).permute(0, 3, 1, 2)
 
-        figures = [
-            xhs.squeeze()[:, slot_i, ...].permute(0, 3, 1, 2)
-            for slot_i in range(self.num_slots)
-        ]
-        return hat_x, figures, masks
+        return hat_x, xhs, masks, reconstructions
 
     def forward(
         self,
         x,
         use_consistency_loss=False,
         extended_consistency_loss=False,
-        detached_latents=False,
     ) -> Dict[str, Any]:
         hat_z = self.encode(x)
-        hat_x, figures, masks = self.decode(hat_z)
+        hat_x, figures, masks, reconstructions = self.decode(hat_z)
 
+        output_dict = {
+            "reconstructed_image": hat_x,
+            "predicted_latents": hat_z,
+            "reconstructed_figures": figures.permute(1, 0, 4, 2, 3),
+            "reconstructed_masks": masks.permute(1, 0, 4, 2, 3),
+            "raw_figures": reconstructions.permute(1, 0, 4, 2, 3),
+        }
         # we always want to look at the consistency loss, but we not always want to backpropagate through consistency part
         with nullcontext() if use_consistency_loss else torch.no_grad():
-            z_sampled = sample_z_from_latents(hat_z.detach())
-            with torch.no_grad() if detached_latents else nullcontext():
-                x_sampled, figures_sampled, sampled_masks = self.decode(z_sampled)
+            consistency_pass_dict = self.consistency_pass(
+                hat_z, figures, extended_consistency_loss
+            )
 
-            hat_z_sampled = self.encode(x_sampled)
-            with nullcontext() if extended_consistency_loss else torch.no_grad():
-                hat_x_sampled, _, _ = self.decode(hat_z_sampled)
+        output_dict.update(consistency_pass_dict)
+        return output_dict
 
-            return {
-                "reconstructed_image": hat_x,
-                "predicted_latents": hat_z,
-                "reconstructed_figures": figures,
-                "reconstructed_masks": masks.permute(1, 0, 4, 2, 3),
-                "sampled_image": x_sampled,
-                "sampled_figures": figures_sampled,
-                "sampled_masks": sampled_masks.permute(1, 0, 4, 2, 3),
-                "sampled_latents": z_sampled,
-                "reconstructed_sampled_image": hat_x_sampled,
-                "predicted_sampled_latents": hat_z_sampled,
-            }
+    def consistency_pass(self, hat_z, figures, extended_consistency_loss):
+        # getting imaginary samples
+        with torch.no_grad():
+            z_sampled, indices = sample_z_from_latents(hat_z.detach())
+            figures_sampled = figures.reshape(
+                -1, figures.shape[2], figures.shape[3], figures.shape[4]
+            )[indices].reshape(-1, *figures.shape[1:])
+            x_sampled = torch.sum(figures_sampled, dim=1).permute(0, 3, 1, 2)
+
+        hat_z_sampled = self.encode(x_sampled)
+        with nullcontext() if extended_consistency_loss else torch.no_grad():
+            hat_x_sampled, _, sampled_masks, raw_sampled_figures = self.decode(
+                hat_z_sampled
+            )
+
+        return {
+            "sampled_image": x_sampled,
+            "sampled_figures": figures_sampled.permute(1, 0, 4, 2, 3),
+            "sampled_latents": z_sampled,
+            "sampled_masks": sampled_masks.permute(1, 0, 4, 2, 3),
+            "reconstructed_sampled_image": hat_x_sampled,
+            "predicted_sampled_latents": hat_z_sampled,
+            "raw_sampled_figures": raw_sampled_figures.permute(1, 0, 4, 2, 3),
+        }
 
 
 class SlotAttention(nn.Module):
@@ -201,12 +216,13 @@ class SoftPositionEmbed(nn.Module):
 
 
 class SlotAttentionEncoder(nn.Module):
-    def __init__(self, resolution, hid_dim):
+    def __init__(self, resolution, hid_dim, ch_dim, dataset_name):
         super().__init__()
-        self.conv1 = nn.Conv2d(3, hid_dim, 5, padding=2)
-        self.conv2 = nn.Conv2d(hid_dim, hid_dim, 5, padding=2)
-        self.conv3 = nn.Conv2d(hid_dim, hid_dim, 5, padding=2)
-        self.conv4 = nn.Conv2d(hid_dim, hid_dim, 5, padding=2)
+        self.dataset_name = dataset_name
+        self.conv1 = nn.Conv2d(3, ch_dim, 5, padding=2)
+        self.conv2 = nn.Conv2d(ch_dim, ch_dim, 5, padding=2)
+        self.conv3 = nn.Conv2d(ch_dim, ch_dim, 5, padding=2)
+        self.conv4 = nn.Conv2d(ch_dim, hid_dim, 5, padding=2)
         self.encoder_pos = SoftPositionEmbed(hid_dim, resolution)
 
     def forward(self, x):
@@ -225,40 +241,53 @@ class SlotAttentionEncoder(nn.Module):
 
 
 class SlotAttentionDecoder(nn.Module):
-    def __init__(self, hid_dim, resolution):
+    def __init__(self, ch_dim, hid_dim, resolution, dataset_name):
         super().__init__()
-        self.conv1 = nn.ConvTranspose2d(
-            hid_dim, hid_dim, 5, stride=(2, 2), padding=2, output_padding=1
-        )
-        self.conv2 = nn.ConvTranspose2d(
-            hid_dim, hid_dim, 5, stride=(2, 2), padding=2, output_padding=1
-        )
-        self.conv3 = nn.ConvTranspose2d(
-            hid_dim, hid_dim, 5, stride=(2, 2), padding=2, output_padding=1
-        )
-        self.conv4 = nn.ConvTranspose2d(
-            hid_dim, hid_dim, 5, stride=(2, 2), padding=2, output_padding=1
-        )
-        self.conv5 = nn.ConvTranspose2d(hid_dim, hid_dim, 5, stride=(1, 1), padding=2)
-        self.conv6 = nn.ConvTranspose2d(hid_dim, 4, 3, stride=(1, 1), padding=1)
-        self.decoder_initial_size = (8, 8)
+        self.dataset_name = dataset_name
+        if self.dataset_name == "dsprites":
+            self.decoder_initial_size = (64, 64)
+
+            self.conv_list = nn.ModuleList(
+                [nn.Conv2d(hid_dim, ch_dim, 5, padding=2), nn.ReLU()]
+            )
+            for i in range(2):
+                self.conv_list.append(nn.Conv2d(ch_dim, ch_dim, 5, padding=2))
+                self.conv_list.append(nn.ReLU())
+
+            self.conv_list.append(nn.Conv2d(ch_dim, 4, 3, padding=1))
+
+        elif self.dataset_name == "kubric":
+            self.decoder_initial_size = (8, 8)
+
+            self.conv_list = nn.ModuleList(
+                [nn.ConvTranspose2d(hid_dim, ch_dim, 5, padding=2), nn.ReLU()]
+            )
+            for i in range(3):
+                self.conv_list.append(
+                    nn.ConvTranspose2d(ch_dim, ch_dim, 5, padding=2, output_padding=1)
+                )
+                self.conv_list.append(nn.ReLU())
+            self.conv_list.extend(
+                [
+                    nn.ConvTranspose2d(
+                        ch_dim, ch_dim, 5, padding=2, stride=1, output_padding=0
+                    ),
+                    nn.ReLU(),
+                    nn.ConvTranspose2d(
+                        ch_dim, 4, 3, padding=1, stride=1, output_padding=0
+                    ),
+                ],
+            )
+
         self.decoder_pos = SoftPositionEmbed(hid_dim, self.decoder_initial_size)
         self.resolution = resolution
 
     def forward(self, x):
         x = self.decoder_pos(x)
         x = x.permute(0, 3, 1, 2)
-        x = self.conv1(x)
-        x = F.relu(x)
-        x = self.conv2(x)
-        x = F.relu(x)
-        x = self.conv3(x)
-        x = F.relu(x)
-        x = self.conv4(x)
-        x = F.relu(x)
-        x = self.conv5(x)
-        x = F.relu(x)
-        x = self.conv6(x)
+        for conv_layer in self.conv_list:
+            x = conv_layer(x)
+
         x = x[:, :, : self.resolution[0], : self.resolution[1]]
         x = x.permute(0, 2, 3, 1)
         return x

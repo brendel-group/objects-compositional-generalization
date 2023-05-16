@@ -19,19 +19,19 @@ if __name__ == "__main__":
     parser.add_argument(
         "--dataset_name",
         choices=["dsprites", "kubric"],
-        default="kubric",
+        default="dsprites",
         help="Dataset to use. All datasets are pre-generated and stored in data folder.",
     )
     parser.add_argument(
         "--use_consistency_loss",
         choices=[True, False],
-        default=False,
+        default=True,
         help="Whether to use consistency loss.",
     )
     parser.add_argument(
         "--extended_consistency_loss",
         choices=[True, False],
-        default=False,
+        default=True,
         help="Whether to use extended consistency loss.",
     )
     parser.add_argument(
@@ -41,18 +41,12 @@ if __name__ == "__main__":
         help="Turns model to Autoencoder mode (no slots loss).",
     )
     parser.add_argument(
-        "--detached_latents",
-        choices=[True, False],
-        default=True,
-        help="Detach latents from encoder or not.",
+        "--epochs", type=int, default=400, help="Number of epochs to train for."
     )
+    parser.add_argument("--batch_size", type=int, default=64, help="Batch size to use.")
     parser.add_argument(
-        "--epochs", type=int, default=500, help="Number of epochs to train for."
+        "--lr", type=float, default=0.0004, help="Learning rate to use."
     )
-    parser.add_argument(
-        "--batch_size", type=int, default=128, help="Batch size to use."
-    )
-    parser.add_argument("--lr", type=float, default=0.001, help="Learning rate to use.")
     parser.add_argument(
         "--lr_scheduler_step",
         type=int,
@@ -74,19 +68,19 @@ if __name__ == "__main__":
     parser.add_argument(
         "--consistency_encoder_term_weight",
         type=float,
-        default=0.1,
+        default=1.0,
         help="Weight for consistency encoder loss in consistency loss.",
     )
     parser.add_argument(
         "--consistency_decoder_term_weight",
         type=float,
-        default=1,
+        default=1.0,
         help="Weight for consistency decoder loss in consistency loss.",
     )
     parser.add_argument(
         "--consistency_ignite_epoch",
         type=int,
-        default=0,
+        default=150,
         help="Epoch to start consistency loss.",
     )
     parser.add_argument(
@@ -98,7 +92,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--consistency_scheduler_step",
         type=int,
-        default=200,
+        default=150,
         help="How often to decrease consistency term weight.",
     )
     parser.add_argument(
@@ -110,7 +104,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--n_samples_truncate",
         type=int,
-        default=60000,
+        default=None,
         help="Number of samples to truncate training dataset to.",
     )
     parser.add_argument(
@@ -138,7 +132,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--sample_mode_train",
         type=str,
-        default="random",
+        default="diagonal",
         help="Sampling mode for training dataset.",
     )
 
@@ -171,8 +165,8 @@ if __name__ == "__main__":
         default=None,
         help="Path to checkpoint to load.",
     )
-
     args = parser.parse_args()
+    args.load_checkpoint = f"/mnt/qb/work/bethge/apanfilov27/object_centric_consistency_project/checkpoints/{args.seed}.pt"
     print(args)
 
     train.run(**vars(args))

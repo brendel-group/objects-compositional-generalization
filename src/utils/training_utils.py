@@ -6,34 +6,36 @@ import torch
 from typing import Tuple
 
 
-def sample_z_from_latents(latents):
+def sample_z_from_latents(latents, n_samples=256):
     """
     Sample "delusional" z samples from latents.
 
     Args:
         latents: tensor of shape (batch_size, n_slots, n_latents)
+        n_samples: number of samples to generate
 
     Returns:
-        sampled_z: tensor of shape (batch_size, n_slots, n_latents)
+        sampled_z: tensor of shape (n_samples, n_slots, n_latents)
+        indices: array of indices of the sampled latents
     """
     batch_size, n_slots, n_latents = latents.shape
 
     # Flatten the latents tensor into a 2D tensor
-    flattened_latents = latents.view(batch_size * n_slots, n_latents)
+    flattened_latents = latents.reshape(batch_size * n_slots, n_latents)
 
     # Sample indices randomly with replacement from the flattened latents tensor
     indices = np.random.choice(
         len(flattened_latents),
-        size=batch_size * n_slots,
+        size=n_samples * n_slots,
     )
 
     # Gather the sampled latents from the flattened tensor
     sampled_latents = flattened_latents[indices]
 
     # Reshape the sampled latents tensor back to the original shape
-    sampled_z = sampled_latents.view(batch_size, n_slots, n_latents)
+    sampled_z = sampled_latents.reshape(n_samples, n_slots, n_latents)
 
-    return sampled_z.to(latents.device)
+    return sampled_z.to(latents.device), indices
 
 
 def set_seed(seed):

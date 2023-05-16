@@ -40,6 +40,8 @@ def wandb_log(
     reconstructed_image=None,
     reconstructed_figures=None,
     reconstructed_masks=None,
+    raw_sampled_figures=None,
+    raw_figures=None,
     accum_consistency_encoder_loss=None,
     accum_consistency_decoder_loss=None,
     sampled_image=None,
@@ -91,6 +93,12 @@ def wandb_log(
 
     if sampled_figures is not None and epoch % freq == 0:
         __log_figures(log_dict, sampled_figures, f"{mode} sampled")
+
+    if raw_figures is not None and epoch % freq == 0:
+        __log_figures(log_dict, raw_figures, f"{mode} raw")
+
+    if raw_sampled_figures is not None and epoch % freq == 0:
+        __log_figures(log_dict, raw_sampled_figures, f"{mode} raw sampled")
 
     if sampled_masks is not None and epoch % freq == 0:
         __log_figures(log_dict, sampled_masks, f"{mode} sampled masks")

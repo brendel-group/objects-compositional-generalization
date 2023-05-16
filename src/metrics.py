@@ -162,8 +162,7 @@ def identifiability_score(
             )
 
             figures_reshaped = figures.view(figures.shape[0], figures.shape[1], -1)
-            predicted_figures = torch.stack(predicted_figures, dim=1)
-
+            predicted_figures = predicted_figures.permute(1, 0, 2, 3, 4)
             predicted_figures_reshaped = predicted_figures.reshape(
                 predicted_figures.shape[0], predicted_figures.shape[1], -1
             )
@@ -209,7 +208,7 @@ def identifiability_score(
                 )
 
                 figures_reshaped = figures.view(figures.shape[0], figures.shape[1], -1)
-                predicted_figures = torch.stack(predicted_figures, dim=1)
+                predicted_figures = predicted_figures.permute(1, 0, 2, 3, 4)
                 predicted_figures_reshaped = predicted_figures.reshape(
                     predicted_figures.shape[0], predicted_figures.shape[1], -1
                 )
