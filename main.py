@@ -13,7 +13,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--model_name",
         choices=["SlotMLPAdditive", "SlotAttention", "MONet", "GENESIS"],
-        default="SlotAttention",
+        default="SlotMLPAdditive",
         help="Model to use. One of the models defined in base_models.py.",
     )
     parser.add_argument(
@@ -68,7 +68,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--consistency_encoder_term_weight",
         type=float,
-        default=1.0,
+        default=0.0001,
         help="Weight for consistency encoder loss in consistency loss.",
     )
     parser.add_argument(
@@ -80,7 +80,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--consistency_ignite_epoch",
         type=int,
-        default=150,
+        default=50,
         help="Epoch to start consistency loss.",
     )
     parser.add_argument(
@@ -132,7 +132,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--sample_mode_train",
         type=str,
-        default="diagonal",
+        default="random",
         help="Sampling mode for training dataset.",
     )
 
@@ -166,7 +166,7 @@ if __name__ == "__main__":
         help="Path to checkpoint to load.",
     )
     args = parser.parse_args()
-    args.load_checkpoint = f"/mnt/qb/work/bethge/apanfilov27/object_centric_consistency_project/checkpoints/{args.seed}.pt"
+    # args.load_checkpoint = f"/mnt/qb/work/bethge/apanfilov27/object_centric_consistency_project/checkpoints/MONet_{args.seed}.pt"
     print(args)
 
     train.run(**vars(args))

@@ -47,12 +47,36 @@ class MONet(BaseModel):
     def slot_size(self) -> int:
         return self.latent_size
 
+    def consistency_pass(self, hat_z, figures, extended_consistency_loss):
+        # getting imaginary samples
+        with torch.no_grad():
+            z_sampled, indices = sample_z_from_latents(hat_z.detach())
+            figures_sampled = figures.reshape(
+                -1, figures.shape[2], figures.shape[3], figures.shape[4]
+            )[indices].reshape(-1, *figures.shape[1:])
+            x_sampled = torch.sum(figures_sampled, dim=1)
+
+        hat_z_sampled, kl_zs, slot_means, masks, log_masks = self.encoding(x_sampled)
+        with nullcontext() if extended_consistency_loss else torch.no_grad():
+            hat_x_sampled, _, sampled_masks, raw_sampled_figures = self.decoding(
+                hat_z_sampled
+            )
+
+        return {
+            "sampled_image": x_sampled,
+            "sampled_figures": figures_sampled.permute(1, 0, 2, 3, 4),
+            "sampled_latents": z_sampled,
+            "sampled_masks": sampled_masks.unsqueeze(-1).permute(1, 0, 4, 2, 3),
+            "reconstructed_sampled_image": hat_x_sampled,
+            "predicted_sampled_latents": slot_means,
+            "raw_sampled_figures": raw_sampled_figures.permute(1, 0, 2, 3, 4),
+        }
+
     def forward(
         self,
         x: Tensor,
         use_consistency_loss=False,
         extended_consistency_loss=False,
-        detached_latents=False,
     ) -> Dict[str, Any]:
         # input: (B, 3, H, W)
 
@@ -60,44 +84,22 @@ class MONet(BaseModel):
         recons, xhs, masks_pred, slots = self.decoding(zs)
         loss = self._compute_loss(x, slots, masks, log_masks, masks_pred, kl_zs)
 
-        with nullcontext() if use_consistency_loss else torch.no_grad():
-            z_sampled = sample_z_from_latents(slot_means.detach())
-            with torch.no_grad() if detached_latents else nullcontext():
-                x_sampled, figures_sampled, masks_sampled, _ = self.decoding(z_sampled)
-
-            zs, _, hat_z_sampled, _, _ = self.encoding(x_sampled)
-
-            with nullcontext() if extended_consistency_loss else torch.no_grad():
-                hat_x_sampled, _, _, _ = self.decoding(zs)
-
-        figures = [xhs.squeeze()[:, slot_i, ...] for slot_i in range(self.num_slots)]
-        figures_sampled = [
-            figures_sampled.squeeze()[:, slot_i, ...]
-            for slot_i in range(self.num_slots)
-        ]
-        return {
+        output_dict = {
             "reconstructed_image": recons,
             "predicted_latents": slot_means,
-            "reconstructed_figures": figures,
-            "reconstructed_masks": masks_pred,
-            "sampled_image": x_sampled,
-            "sampled_figures": figures_sampled,
-            "sampled_latents": z_sampled,
-            "reconstructed_sampled_image": hat_x_sampled,
-            "predicted_sampled_latents": hat_z_sampled,
+            "reconstructed_figures": xhs.permute(1, 0, 2, 3, 4),
+            "reconstructed_masks": masks_pred.unsqueeze(-1).permute(1, 0, 4, 2, 3),
+            "raw_figures": slots.permute(1, 0, 2, 3, 4),
             "loss": loss,
         }
-        # return (
-        #     recons,
-        #     slot_means,
-        #     figures,
-        #     x_sampled,
-        #     hat_z_sampled,
-        #     figures_sampled,
-        #     z_sampled,
-        #     hat_x_sampled,
-        #     loss,
-        # )
+        # we always want to look at the consistency loss, but we not always want to backpropagate through consistency part
+        with nullcontext() if use_consistency_loss else torch.no_grad():
+            consistency_pass_dict = self.consistency_pass(
+                slot_means, xhs, extended_consistency_loss
+            )
+
+        output_dict.update(consistency_pass_dict)
+        return output_dict
 
     def encoding(self, x):
         # Forward pass through recurrent attention network.

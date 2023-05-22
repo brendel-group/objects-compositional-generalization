@@ -73,7 +73,7 @@ def one_epoch(
         output_dict = model(
             images,
             use_consistency_loss=use_consistency_loss,
-            extended_consistency_loss=extended_consistency_loss
+            extended_consistency_loss=extended_consistency_loss,
         )
 
         if "loss" in output_dict:
@@ -311,9 +311,18 @@ def run(
         model, optimizer, scheduler, start_epoch = training_utils.load_checkpoint(
             model, optimizer, scheduler, load_checkpoint
         )
+        optimizer.param_groups[0]["lr"] = optimizer.param_groups[0]["lr"] * 2
+
     start_epoch += 1
 
     for epoch in range(start_epoch, epochs + 1):
+        if epoch == consistency_ignite_epoch and use_consistency_loss:
+            training_utils.save_checkpoint(
+                path=data_utils.data_path,
+                **locals(),
+                checkpoint_name=f"before_ignite_model_{sample_mode_train}_{seed}",
+            )
+
         rec_loss = one_epoch(
             model,
             train_loader,
