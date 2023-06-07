@@ -12,9 +12,15 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--model_name",
-        choices=["SlotMLPAdditive", "SlotAttention"],
+        choices=["SlotMLPAdditive", "SlotAttention", "MONet", "GENESIS"],
         default="SlotMLPAdditive",
         help="Model to use. One of the models defined in base_models.py.",
+    )
+    parser.add_argument(
+        "--dataset_name",
+        choices=["dsprites", "kubric"],
+        default="dsprites",
+        help="Dataset to use. All datasets are pre-generated and stored in data folder.",
     )
     parser.add_argument(
         "--use_consistency_loss",
@@ -35,18 +41,12 @@ if __name__ == "__main__":
         help="Turns model to Autoencoder mode (no slots loss).",
     )
     parser.add_argument(
-        "--detached_latents",
-        choices=[True, False],
-        default=True,
-        help="Detach latents from encoder or not.",
+        "--epochs", type=int, default=400, help="Number of epochs to train for."
     )
+    parser.add_argument("--batch_size", type=int, default=64, help="Batch size to use.")
     parser.add_argument(
-        "--epochs", type=int, default=3000, help="Number of epochs to train for."
+        "--lr", type=float, default=0.0004, help="Learning rate to use."
     )
-    parser.add_argument(
-        "--batch_size", type=int, default=128, help="Batch size to use."
-    )
-    parser.add_argument("--lr", type=float, default=0.001, help="Learning rate to use.")
     parser.add_argument(
         "--lr_scheduler_step",
         type=int,
@@ -78,15 +78,21 @@ if __name__ == "__main__":
         help="Weight for consistency decoder loss in consistency loss.",
     )
     parser.add_argument(
+        "--consistency_ignite_epoch",
+        type=int,
+        default=50,
+        help="Epoch to start consistency loss.",
+    )
+    parser.add_argument(
         "--consistency_scheduler",
         choices=[True, False],
-        default=True,
-        help="Whether to use consistency scheduler min(consistency_term_weight, epoch / 200).",
+        default=False,
+        help="Whether to use consistency scheduler min(consistency_term_weight, epoch / consistency_scheduler).",
     )
     parser.add_argument(
         "--consistency_scheduler_step",
         type=int,
-        default=200,
+        default=150,
         help="How often to decrease consistency term weight.",
     )
     parser.add_argument(
@@ -94,6 +100,12 @@ if __name__ == "__main__":
         type=int,
         default=100000,
         help="Number of samples in training dataset.",
+    )
+    parser.add_argument(
+        "--n_samples_truncate",
+        type=int,
+        default=None,
+        help="Number of samples to truncate training dataset to.",
     )
     parser.add_argument(
         "--n_samples_test",
@@ -120,7 +132,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--sample_mode_train",
         type=str,
-        default="diagonal",
+        default="random",
         help="Sampling mode for training dataset.",
     )
 
@@ -147,7 +159,14 @@ if __name__ == "__main__":
 
     parser.add_argument("--seed", type=int, default=2023, help="Random seed to use.")
 
+    parser.add_argument(
+        "--load_checkpoint",
+        type=str,
+        default=None,
+        help="Path to checkpoint to load.",
+    )
     args = parser.parse_args()
+    # args.load_checkpoint = f"/mnt/qb/work/bethge/apanfilov27/object_centric_consistency_project/checkpoints/MONet_{args.seed}.pt"
     print(args)
 
     train.run(**vars(args))

@@ -4,6 +4,7 @@ import numpy as np
 import torch
 import tqdm
 from scipy.optimize import linear_sum_assignment
+from sklearn.metrics import adjusted_rand_score
 from torch import nn
 from torchmetrics import R2Score
 
@@ -46,7 +47,7 @@ def hungarian_slots_loss(
     predicted_latents: torch.Tensor,
     device: str = "cpu",
     p: int = 2,
-    reduction: str = "sum",
+    reduction: str = "mean",
 ):
     """
     Computes pairwise distance between slots, matches slots with Hungarian algorithm and outputs
@@ -85,6 +86,49 @@ def hungarian_slots_loss(
 
     return loss, transposed_indices
 
+
+def reconstruction_loss(target, prediction, reduction="mean"):
+    loss = (target - prediction).square()
+
+    if reduction == "mean":
+        loss = loss.mean(dim=0)
+    elif reduction == "sum":
+        loss = loss.sum(dim=0)
+
+    return loss.sum()
+
+
+def ari(
+    true_mask: torch.Tensor,
+    pred_mask: torch.Tensor,
+    num_ignored_objects: int = 1,
+) -> torch.FloatTensor:
+    """Computes the ARI score.
+
+    Args:
+        true_mask: tensor of shape [batch_size, n_objects, *] where values go from 0 to the number of objects.
+        pred_mask:  tensor of shape [batch_size, n_objects, *] where values go from 0 to the number of objects.
+        num_ignored_objects: number of objects (in ground-truth mask) to be ignored when computing ARI.
+
+    Returns:
+        a vector of ARI scores, of shape [batch_size, ].
+    """
+    true_mask = true_mask.cpu().argmax(dim=1, keepdim=True).squeeze(2)
+    pred_mask = pred_mask.cpu().argmax(dim=1, keepdim=True).squeeze(2)
+
+    true_mask = true_mask.flatten(1)
+    pred_mask = pred_mask.flatten(1)
+
+    not_bg = true_mask >= num_ignored_objects
+
+    result = []
+    batch_size = len(true_mask)
+    for i in range(batch_size):
+        ari_value = adjusted_rand_score(
+            true_mask[i][not_bg[i]], pred_mask[i][not_bg[i]]
+        )
+        result.append(ari_value)
+    return torch.tensor(result).mean()
 
 def identifiability_score(
     model: torch.nn.Module,
@@ -142,24 +186,16 @@ def identifiability_score(
             true_latents = true_latents.to(device)
 
             with torch.no_grad():
-                (
-                    predicted_images,
-                    predicted_latents,
-                    predicted_figures,
-                    sampled_images,
-                    predicted_z_sampled,
-                    sampled_figures,
-                    z_sampled,
-                    predicted_sampled_images,
-                ) = model(images)
+                output = model(images)
+                predicted_latents = output["predicted_latents"]
+                predicted_figures = output["reconstructed_figures"]
 
             mapped_latents = torch.stack(
                 [mlp(true_latents[:, i, :]) for i in range(n_slots)], dim=1
             )
 
             figures_reshaped = figures.view(figures.shape[0], figures.shape[1], -1)
-            predicted_figures = torch.stack(predicted_figures, dim=1)
-
+            predicted_figures = predicted_figures.permute(1, 0, 2, 3, 4)
             predicted_figures_reshaped = predicted_figures.reshape(
                 predicted_figures.shape[0], predicted_figures.shape[1], -1
             )
@@ -196,23 +232,16 @@ def identifiability_score(
                 true_latents = true_latents.to(device)
 
                 with torch.no_grad():
-                    (
-                        predicted_images,
-                        predicted_latents,
-                        predicted_figures,
-                        sampled_images,
-                        predicted_z_sampled,
-                        sampled_figures,
-                        z_sampled,
-                        predicted_sampled_images,
-                    ) = model(images)
+                    output = model(images)
+                    predicted_latents = output["predicted_latents"]
+                    predicted_figures = output["reconstructed_figures"]
 
                 mapped_latents = torch.stack(
                     [mlp(true_latents[:, i, :]) for i in range(n_slots)], dim=1
                 )
 
                 figures_reshaped = figures.view(figures.shape[0], figures.shape[1], -1)
-                predicted_figures = torch.stack(predicted_figures, dim=1)
+                predicted_figures = predicted_figures.permute(1, 0, 2, 3, 4)
                 predicted_figures_reshaped = predicted_figures.reshape(
                     predicted_figures.shape[0], predicted_figures.shape[1], -1
                 )
