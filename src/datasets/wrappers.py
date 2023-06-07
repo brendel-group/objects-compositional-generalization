@@ -42,6 +42,7 @@ class DataWrapper:
     ):
         raise NotImplementedError
 
+
 class SpritesWorldDataWrapper(DataWrapper):
     """Wrapper for easy access to train/test loaders for SpritesWorldDataset only."""
 
@@ -88,15 +89,12 @@ class SpritesWorldDataWrapper(DataWrapper):
         batch_size,
         **kwargs,
     ):
-        if self.load and os.path.exists(
-            os.path.join(self.path, "train", sample_mode_train)
-        ):
-            train_dataset = PreGeneratedDataset(
-                os.path.join(self.path, "train", sample_mode_train), n_samples_truncate
-            )
-            print(
-                f"Train dataset successfully loaded from {os.path.join(self.path, 'train', sample_mode_train)}."
-            )
+        target_path = os.path.join(
+            self.path, "train", sample_mode_train, f"{n_slots}_objects"
+        )
+        if self.load and os.path.exists(target_path):
+            train_dataset = PreGeneratedDataset(target_path, n_samples_truncate)
+            print(f"Train dataset successfully loaded from {target_path}.")
         else:
             train_dataset = data.SpriteWorldDataset(
                 n_samples_train,
@@ -105,12 +103,13 @@ class SpritesWorldDataWrapper(DataWrapper):
                 sample_mode=sample_mode_train,
                 delta=delta,
                 no_overlap=no_overlap,
-                transform=transforms.Compose([transforms.ToTensor()]),
+                transform=transforms.Compose(
+                    [transforms.ToPILImage(), transforms.ToTensor()]
+                ),
             )
             if self.save:
-                dump_generated_dataset(
-                    train_dataset, os.path.join(self.path, "train", sample_mode_train)
-                )
+                dump_generated_dataset(train_dataset, target_path)
+                print(f"Train dataset successfully saved to {target_path}.")
 
         train_loader = torch.utils.data.DataLoader(
             train_dataset,
@@ -131,14 +130,13 @@ class SpritesWorldDataWrapper(DataWrapper):
         batch_size,
         **kwargs,
     ):
-        if self.load and os.path.exists(
-            os.path.join(self.path, "test", sample_mode_test)
-        ):
-            test_dataset = PreGeneratedDataset(
-                os.path.join(self.path, "test", sample_mode_test)
-            )
+        target_path = os.path.join(
+            self.path, "test", sample_mode_test, f"{n_slots}_objects"
+        )
+        if self.load and os.path.exists(target_path):
+            test_dataset = PreGeneratedDataset(target_path)
             print(
-                f"Test {sample_mode_test} dataset successfully loaded from {os.path.join(self.path, 'test', sample_mode_test)}."
+                f"Test {sample_mode_test} dataset successfully loaded from {target_path}."
             )
         else:
             test_dataset = data.SpriteWorldDataset(
@@ -148,12 +146,13 @@ class SpritesWorldDataWrapper(DataWrapper):
                 sample_mode=sample_mode_test,
                 delta=delta,
                 no_overlap=no_overlap,
-                transform=transforms.Compose([transforms.ToTensor()]),
+                transform=transforms.Compose(
+                    [transforms.ToPILImage(), transforms.ToTensor()]
+                ),
             )
             if self.save:
-                dump_generated_dataset(
-                    test_dataset, os.path.join(self.path, "test", sample_mode_test)
-                )
+                dump_generated_dataset(test_dataset, target_path)
+                print(f"Test dataset successfully saved to {self.path}.")
 
         test_loader = torch.utils.data.DataLoader(
             test_dataset,

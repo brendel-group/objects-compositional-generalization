@@ -6,7 +6,7 @@ import torch
 from typing import Tuple
 
 
-def sample_z_from_latents(latents, n_samples=256):
+def sample_z_from_latents(latents, n_samples=64):
     """
     Sample "delusional" z samples from latents.
 
@@ -36,6 +36,69 @@ def sample_z_from_latents(latents, n_samples=256):
     sampled_z = sampled_latents.reshape(n_samples, n_slots, n_latents)
 
     return sampled_z.to(latents.device), indices
+
+
+def get_masks(x, figures, threshold=0.1):
+    """
+    Get the masks of the objects in the images, given the original image and per-object images.
+    Args:
+        x: Tensor of shape [batch_size, n_ch, res_x, res_y] containing the original images.
+        figures: Tensor of shape [batch_size, n_slots, n_ch, res_x, res_y] containing the object images.
+        threshold: Threshold for the mask (removes some noise artifacts).
+    Returns:
+        masks: Tensor of shape [batch_size, n_slots, n_ch, res_x, res_y] containing the masks of the objects in the images.
+    """
+    # Prepare the mask tensor
+    masks = torch.zeros(
+        (
+            figures.shape[0],
+            figures.shape[1] + 1,
+            1,
+            figures.shape[3],
+            figures.shape[4],
+        )  # +1 for background
+    ).to(x.device)
+
+    # Iterate over the original images
+    for i in range(x.shape[0]):
+        background_mask = torch.ones(x[i].shape).bool().to(x.device)
+        for j in range(0, figures.shape[1]):
+            figure_mask = torch.isclose(
+                x[i],
+                figures[i, j],
+                atol=threshold,
+            )
+            background_mask = background_mask * figure_mask
+
+        background_mask = ~background_mask
+        background_mask = background_mask.float().mean(dim=0, keepdim=True)
+        background_mask = (background_mask > 0).float()
+
+        for j in range(figures.shape[1]):
+            # Get the figure
+            figure = figures[i, j]  # [n_ch, res_x, res_y]
+
+            # Get the mask
+            mask = (
+                torch.isclose(
+                    x[i],
+                    figure,
+                    atol=threshold,
+                )
+                .float()
+                .mean(dim=0, keepdim=True)
+            )
+            mask = (mask == 1.0).float()
+
+            mask *= background_mask
+
+            masks[i, j + 1] = mask
+
+        # Get the background mask
+        background_mask = (~background_mask.bool()).float()
+        masks[i, 0] = background_mask
+
+    return masks
 
 
 def set_seed(seed):

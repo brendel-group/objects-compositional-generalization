@@ -34,11 +34,13 @@ def wandb_log(
     accum_total_loss=None,
     accum_slots_loss=None,
     r2_score=None,
+    accum_ari_score=None,
     per_latent_r2_score=None,
     accum_reconstruction_loss=None,
     images=None,
     reconstructed_image=None,
     reconstructed_figures=None,
+    true_masks=None,
     reconstructed_masks=None,
     raw_sampled_figures=None,
     raw_figures=None,
@@ -75,6 +77,9 @@ def wandb_log(
     if r2_score is not None:
         log_dict[f"{mode} r2 score"] = r2_score
 
+    if accum_ari_score is not None:
+        log_dict[f"{mode} ari score"] = accum_ari_score
+
     if per_latent_r2_score is not None:
         for i, latent_r2 in enumerate(per_latent_r2_score):
             log_dict[f"{mode} latent {i} r2 score"] = latent_r2
@@ -103,13 +108,20 @@ def wandb_log(
     if sampled_masks is not None and epoch % freq == 0:
         __log_figures(log_dict, sampled_masks, f"{mode} sampled masks")
 
+    if true_masks is not None and epoch % freq == 0:
+        __log_figures(log_dict, true_masks, f"{mode} true masks")
+
     if reconstructed_sampled_image is not None and epoch % freq == 0:
         __log_images(
             log_dict, reconstructed_sampled_image, f"{mode} sampled reconstruction"
         )
 
-    if epoch % (freq * 3) == 0 and dataset_name == "dsprites":
-        __make_histogram(data_path, log_dict, model, f"Heatmap (wandb)")
+    try:
+        if epoch % (freq * 3) == 0 and dataset_name == "dsprites":
+            __make_histogram(data_path, log_dict, model, f"Heatmap (wandb)")
+    except:
+        print("Failed to make histogram")
+
 
     wandb.log(log_dict, step=epoch)
 

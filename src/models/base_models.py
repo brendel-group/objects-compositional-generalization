@@ -146,7 +146,9 @@ class SlotMLPAdditive(torch.nn.Module):
         self.decoder = SlotMLPAdditiveDecoder(in_channels, n_slots, n_slot_latents)
         self.model_name = "SlotMLPAdditive"
 
-    def consistency_pass(self, hat_z, figures, extended_consistency_loss):
+    def consistency_pass(
+        self, hat_z, figures, use_consistency_loss, extended_consistency_loss
+    ):
         # getting imaginary samples
         with torch.no_grad():
             z_sampled, indices = sample_z_from_latents(hat_z.detach())
@@ -155,9 +157,16 @@ class SlotMLPAdditive(torch.nn.Module):
             )[indices].reshape(-1, *figures.shape[1:])
             x_sampled = torch.sum(figures_sampled, dim=1)
 
-        hat_z_sampled = self.encoder(x_sampled)
+        # encoder pass
+        with nullcontext() if (
+            use_consistency_loss or extended_consistency_loss
+        ) else torch.no_grad():
+            hat_z_sampled = self.encoder(x_sampled)
+
+        # decoder pass
         with nullcontext() if extended_consistency_loss else torch.no_grad():
             hat_x_sampled, _ = self.decoder(hat_z_sampled)
+
         return {
             "sampled_image": x_sampled,
             "sampled_figures": figures_sampled.permute(1, 0, 2, 3, 4),
@@ -203,10 +212,9 @@ class SlotMLPAdditive(torch.nn.Module):
             "reconstructed_figures": figures.permute(1, 0, 2, 3, 4),
         }
         # we always want to look at the consistency loss, but we not always want to backpropagate through consistency part
-        with nullcontext() if use_consistency_loss else torch.no_grad():
-            consistency_pass_dict = self.consistency_pass(
-                hat_z, figures, extended_consistency_loss
-            )
+        consistency_pass_dict = self.consistency_pass(
+            hat_z, figures, use_consistency_loss, extended_consistency_loss
+        )
 
         output_dict.update(consistency_pass_dict)
         return output_dict

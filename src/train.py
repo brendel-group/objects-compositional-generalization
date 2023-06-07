@@ -54,6 +54,7 @@ def one_epoch(
     accum_reconstruction_loss = 0
     accum_slots_loss = 0
     accum_r2_score = 0
+    accum_ari_score = 0
     per_latent_r2_score = 0
     accum_consistency_loss = 0
     accum_consistency_encoder_loss = 0
@@ -64,7 +65,9 @@ def one_epoch(
         accum_adjustment = len(images) / len(dataloader.dataset)
 
         # first dimensions contain separate objects, last dimension is the final image ("sum" of objects)
-        images = images[:, -1, ...].squeeze(1).to(device)
+        images = images.to(device)
+        true_figures = images[:, :-1, ...]
+        images = images[:, -1, ...].squeeze(1)
         true_latents = true_latents.to(device)
 
         if mode == "train":
@@ -85,6 +88,15 @@ def one_epoch(
             images, output_dict["reconstructed_image"]
         )
         accum_reconstruction_loss += reconstruction_loss.item() * accum_adjustment
+
+        if model.model_name != "SlotMLPAdditive" and epoch % freq == 0:
+            true_masks = training_utils.get_masks(images, true_figures)
+            ari_score = metrics.ari(
+                true_masks,
+                output_dict["reconstructed_masks"].detach().permute(1, 0, 2, 3, 4),
+            )
+            true_masks = true_masks.detach().permute(1, 0, 2, 3, 4)
+            accum_ari_score += ari_score.item() * accum_adjustment
 
         if model.model_name in ["monet", "genesis"]:
             reconstruction_loss = model_loss
@@ -127,7 +139,11 @@ def one_epoch(
             consistency_decoder_loss.item() * accum_adjustment
         )
 
-        consistency_loss = consistency_encoder_loss * consistency_encoder_term_weight
+        consistency_loss = (
+            consistency_encoder_loss
+            * consistency_encoder_term_weight
+            * use_consistency_loss
+        )
         # add to consistency loss only if extended_consistency_loss is True
         if extended_consistency_loss:
             consistency_loss += (
@@ -137,19 +153,18 @@ def one_epoch(
             )
 
         if consistency_scheduler and epoch >= consistency_ignite_epoch:
-            consistency_loss *= (
-                min(
-                    consistency_term_weight,
-                    (epoch - consistency_ignite_epoch) / consistency_scheduler_step,
-                )
-                * use_consistency_loss
+            consistency_loss *= min(
+                consistency_term_weight,
+                (epoch - consistency_ignite_epoch) / consistency_scheduler_step,
             )
         else:
-            consistency_loss *= consistency_term_weight * use_consistency_loss
+            consistency_loss *= consistency_term_weight
 
         accum_consistency_loss += consistency_loss.item() * accum_adjustment
 
-        if use_consistency_loss and epoch >= consistency_ignite_epoch:
+        if (
+            use_consistency_loss or extended_consistency_loss
+        ) and epoch >= consistency_ignite_epoch:
             # add to total loss
             total_loss += consistency_loss
 
@@ -173,6 +188,7 @@ def one_epoch(
         accum_consistency_decoder_loss,
     )
     if epoch % freq == 0:
+        print(f"ARI score: {accum_ari_score:.4f}")
         wandb_utils.wandb_log(
             data_path,
             kwargs["dataset_name"],
@@ -235,6 +251,8 @@ def run(
         wandb.define_metric(f"test_{mode} reconstruction loss", summary="min")
     wandb.define_metric("ID_score_ID", summary="max")
     wandb.define_metric("ID_score_OOD", summary="max")
+    for mode in ["ID", "OOD", "RDM"]:
+        wandb.define_metric(f"test_{mode} ari score", summary="max")
     wandb_utils.wandb_log_code(wandb.run)
 
     time_created = time.strftime("%Y-%m-%d_%H-%M-%S", time.localtime())
@@ -269,7 +287,7 @@ def run(
         ch_dim = 32  # originally 32
     elif dataset_name == "kubric":
         resolution = (128, 128)
-        ch_dim = 32  # originally 64
+        ch_dim = 64  # originally 64
 
     if model_name == "SlotMLPAdditive":
         model = base_models.SlotMLPAdditive(in_channels, n_slots, n_slot_latents).to(
@@ -294,6 +312,7 @@ def run(
             num_slots=n_slots,
             num_iterations=3,
             hid_dim=n_slot_latents,
+            dataset_name=dataset_name,
         ).to(device)
     elif model_name == "MONet":
         model = src.models.get_monet_model(n_slots, n_slot_latents, device)

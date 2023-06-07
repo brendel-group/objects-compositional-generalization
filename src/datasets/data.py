@@ -176,41 +176,28 @@ class SpriteWorldDataset(torch.utils.data.TensorDataset):
         return sampled_sprites
 
     def __generate_from_latents(self) -> torch.Tensor:
-        images = [None] * self.n_samples
+        images = torch.zeros(
+            (self.n_samples, self.n_slots + 1, 3, self.img_h, self.img_w)
+        )
         for sample_ind in tqdm.tqdm(
             range(self.n_samples),
             desc=f"Generating images (sampling: {self.sample_mode})",
         ):
             self.__generate_ind = sample_ind
             ts = self.env.reset()
-            out = ts.observation["image"]
+            out = torch.from_numpy(np.array(ts.observation["image"]))
 
-            # if type(out) == list:
-            #     # works for windows
-            #     images[sample_ind] = np.array(ts.observation["image"])[
-            #         -1
-            #     ]  # last one contains all sprites in one scene
-            # else:
-            #     # for some reason on cluster it outputs only one image
-            #     images[sample_ind] = np.array(out)
-
-            images[sample_ind] = np.array(out)
+            images[sample_ind] = out.permute(0, 3, 1, 2)
 
             if self.transform is not None:
-                images[sample_ind] = [
-                    self.transform(images[sample_ind][i])
-                    for i in range(self.n_slots + 1)
-                ]
-                images[sample_ind] = torch.stack(images[sample_ind])
-            else:
-                images[sample_ind] = torch.from_numpy(images[sample_ind])
+                for slot_ind in range(self.n_slots + 1):
+                    images[sample_ind, slot_ind] = self.transform(
+                        images[sample_ind, slot_ind].squeeze() * 255
+                    )
 
         self.__generate_ind = 0
-        stacked_images = (
-            torch.stack(images)
-            .to(torch.float32)
-            .view(self.n_samples, self.n_slots + 1, 3, self.img_h, self.img_w)
-        )
+        stacked_images = images.to(torch.float32)
+
         return stacked_images
 
     def __adjust_x_coord(self, generated_x_y) -> torch.Tensor:

@@ -192,7 +192,9 @@ def sample_diagonal(
     latents_metadata = cfg.get_latents_metadata()
 
     assert torch.max(z_out) <= 1
-    assert torch.min(z_out) >= 0
+    assert torch.min(z_out) >= -1e-6
+
+    z_out = z_out.abs()
 
     i = 0
     for latent in latents_metadata:

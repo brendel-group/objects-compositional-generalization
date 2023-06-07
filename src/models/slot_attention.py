@@ -13,7 +13,9 @@ from src.utils.training_utils import sample_z_from_latents
 
 
 class SlotAttentionAutoEncoder(nn.Module):
-    def __init__(self, encoder, decoder, num_slots, num_iterations, hid_dim):
+    def __init__(
+        self, encoder, decoder, num_slots, num_iterations, hid_dim, dataset_name
+    ):
         """Builds the Slot Attention-based auto-encoder.
         Args:
         num_slots: Number of slots in Slot Attention.
@@ -40,7 +42,10 @@ class SlotAttentionAutoEncoder(nn.Module):
             hidden_dim=64,
         )
 
-        self.spatial_broadcast = 64
+        if dataset_name == "dsprites":
+            self.spatial_broadcast = 64
+        elif dataset_name == "kubric":
+            self.spatial_broadcast = 8
 
     def encode(self, x):
         # `x` is an image which has shape: [batch_size, num_channels, width, height].
@@ -100,24 +105,24 @@ class SlotAttentionAutoEncoder(nn.Module):
             "raw_figures": reconstructions.permute(1, 0, 4, 2, 3),
         }
         # we always want to look at the consistency loss, but we not always want to backpropagate through consistency part
-        with nullcontext() if use_consistency_loss else torch.no_grad():
-            consistency_pass_dict = self.consistency_pass(
-                hat_z, figures, extended_consistency_loss
-            )
+        consistency_pass_dict = self.consistency_pass(
+            hat_z, figures, use_consistency_loss, extended_consistency_loss
+        )
 
         output_dict.update(consistency_pass_dict)
         return output_dict
 
-    def consistency_pass(self, hat_z, figures, extended_consistency_loss):
+    def consistency_pass(self, hat_z, figures, use_consistency_loss, extended_consistency_loss):
         # getting imaginary samples
         with torch.no_grad():
             z_sampled, indices = sample_z_from_latents(hat_z.detach())
-            figures_sampled = figures.reshape(
-                -1, figures.shape[2], figures.shape[3], figures.shape[4]
-            )[indices].reshape(-1, *figures.shape[1:])
-            x_sampled = torch.sum(figures_sampled, dim=1).permute(0, 3, 1, 2)
+            x_sampled, figures_sampled, _, _ = self.decode(z_sampled)
 
-        hat_z_sampled = self.encode(x_sampled)
+        # encoder pass
+        with nullcontext() if (use_consistency_loss or extended_consistency_loss) else torch.no_grad():
+            hat_z_sampled = self.encode(x_sampled)
+
+        # decoder pass
         with nullcontext() if extended_consistency_loss else torch.no_grad():
             hat_x_sampled, _, sampled_masks, raw_sampled_figures = self.decode(
                 hat_z_sampled
@@ -260,11 +265,18 @@ class SlotAttentionDecoder(nn.Module):
             self.decoder_initial_size = (8, 8)
 
             self.conv_list = nn.ModuleList(
-                [nn.ConvTranspose2d(hid_dim, ch_dim, 5, padding=2), nn.ReLU()]
+                [
+                    nn.ConvTranspose2d(
+                        hid_dim, ch_dim, 5, padding=2, stride=2, output_padding=1
+                    ),
+                    nn.ReLU(),
+                ]
             )
             for i in range(3):
                 self.conv_list.append(
-                    nn.ConvTranspose2d(ch_dim, ch_dim, 5, padding=2, output_padding=1)
+                    nn.ConvTranspose2d(
+                        ch_dim, ch_dim, 5, padding=2, stride=2, output_padding=1
+                    )
                 )
                 self.conv_list.append(nn.ReLU())
             self.conv_list.extend(

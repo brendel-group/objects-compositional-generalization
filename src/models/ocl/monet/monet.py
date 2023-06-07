@@ -47,7 +47,9 @@ class MONet(BaseModel):
     def slot_size(self) -> int:
         return self.latent_size
 
-    def consistency_pass(self, hat_z, figures, extended_consistency_loss):
+    def consistency_pass(
+        self, hat_z, figures, use_consistency_loss, extended_consistency_loss
+    ):
         # getting imaginary samples
         with torch.no_grad():
             z_sampled, indices = sample_z_from_latents(hat_z.detach())
@@ -56,7 +58,15 @@ class MONet(BaseModel):
             )[indices].reshape(-1, *figures.shape[1:])
             x_sampled = torch.sum(figures_sampled, dim=1)
 
-        hat_z_sampled, kl_zs, slot_means, masks, log_masks = self.encoding(x_sampled)
+        # encoder pass
+        with nullcontext() if (
+            use_consistency_loss or extended_consistency_loss
+        ) else torch.no_grad():
+            hat_z_sampled, kl_zs, slot_means, masks, log_masks = self.encoding(
+                x_sampled
+            )
+
+        # decoder pass
         with nullcontext() if extended_consistency_loss else torch.no_grad():
             hat_x_sampled, _, sampled_masks, raw_sampled_figures = self.decoding(
                 hat_z_sampled
@@ -93,10 +103,9 @@ class MONet(BaseModel):
             "loss": loss,
         }
         # we always want to look at the consistency loss, but we not always want to backpropagate through consistency part
-        with nullcontext() if use_consistency_loss else torch.no_grad():
-            consistency_pass_dict = self.consistency_pass(
-                slot_means, xhs, extended_consistency_loss
-            )
+        consistency_pass_dict = self.consistency_pass(
+            slot_means, xhs, use_consistency_loss, extended_consistency_loss
+        )
 
         output_dict.update(consistency_pass_dict)
         return output_dict
