@@ -1,6 +1,6 @@
 import pytest
 
-from src.datasets import data
+from src.datasets import data, configs
 
 
 @pytest.mark.parametrize(
@@ -8,10 +8,10 @@ from src.datasets import data
     [
         {},
         {
-            "x": config.Range(0.1, 0.9),
-            "y": config.Range(0.1, 0.9),
+            "x": configs.Range(0.1, 0.9),
+            "y": configs.Range(0.1, 0.9),
             "shape": ["circle"],
-            "angle": config.Range(0, 90),
+            "angle": configs.Range(0, 90),
         },
     ],
 )

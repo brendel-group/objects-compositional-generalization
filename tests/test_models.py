@@ -1,9 +1,9 @@
-from src.datasets import data
+from src.datasets import data, configs
 from src import models
 
 
 def test_SlotMLPAdditive():
-    cfg = config.SpriteWorldConfig()
+    cfg = configs.SpriteWorldConfig()
 
     n_slots = 2
     img_h = 64
@@ -33,7 +33,7 @@ def test_SlotMLPAdditive():
 
 
 def test_SlotMLPMonolithic():
-    cfg = config.SpriteWorldConfig()
+    cfg = configs.SpriteWorldConfig()
 
     n_slots = 2
     img_h = 64
@@ -62,7 +62,7 @@ def test_SlotMLPMonolithic():
 
 
 def test_SlotMLPEncoder():
-    cfg = config.SpriteWorldConfig()
+    cfg = configs.SpriteWorldConfig()
 
     n_slots = 2
     img_h = 64
@@ -89,7 +89,7 @@ def test_SlotMLPEncoder():
 
 
 def test_SlotMLPAdditiveDecoder():
-    cfg = config.SpriteWorldConfig()
+    cfg = configs.SpriteWorldConfig()
 
     n_slots = 2
     img_h = 64
@@ -118,7 +118,7 @@ def test_SlotMLPAdditiveDecoder():
 
 
 def test_SlotMLPMonolithicDecoder():
-    cfg = config.SpriteWorldConfig()
+    cfg = configs.SpriteWorldConfig()
 
     n_slots = 2
     img_h = 64
