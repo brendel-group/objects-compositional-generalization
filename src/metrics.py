@@ -70,12 +70,17 @@ def hungarian_slots_loss(
     indices = np.array(
         list(map(linear_sum_assignment, pairwise_cost.detach().cpu().numpy()))
     )  # applying hungarian algorithm to every sample in batch
-    transposed_indices = torch.from_numpy(np.transpose(indices, axes=(0, 2, 1)))
+    transposed_indices = torch.from_numpy(
+        np.transpose(indices, axes=(0, 2, 1))
+    )  # these indexes are showing how I need to shuffle the g.t. latents to match the predicted latents
 
     # extracting the cost of the matched slots; this code is a bit ugly, idk what is the nice way to do it
     loss = torch.gather(pairwise_cost, 2, transposed_indices.to(device))[:, :, -1].sum(
         1
     )  # sum along slots
+
+    # taking the inverse, to match the predicted latents to the g.t.
+    inverse_indices = torch.argsort(transposed_indices, dim=1)
 
     if reduction == "mean":
         loss = loss.mean()
@@ -84,7 +89,7 @@ def hungarian_slots_loss(
     else:
         raise ValueError("Reduction type not supported.")
 
-    return loss, transposed_indices
+    return loss, inverse_indices
 
 
 def reconstruction_loss(target, prediction, reduction="mean"):
@@ -129,6 +134,7 @@ def ari(
         )
         result.append(ari_value)
     return torch.tensor(result).mean()
+
 
 def identifiability_score(
     model: torch.nn.Module,
@@ -201,11 +207,14 @@ def identifiability_score(
             )
             with torch.no_grad():
                 # no loss calculated here, just indices for resolving permutations
+
+                # original code
                 _, transposed_indices = hungarian_slots_loss(
                     figures_reshaped,
                     predicted_figures_reshaped,
                     device=device,
                 )
+
             transposed_indices = transposed_indices.to(device)
 
             predicted_latents = predicted_latents.gather(
