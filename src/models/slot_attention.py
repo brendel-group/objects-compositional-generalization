@@ -116,7 +116,11 @@ class SlotAttentionAutoEncoder(nn.Module):
         # getting imaginary samples
         with torch.no_grad():
             z_sampled, indices = sample_z_from_latents(hat_z.detach())
-            x_sampled, figures_sampled, _, _ = self.decode(z_sampled)
+            figures_sampled = figures.reshape(
+                -1, figures.shape[2], figures.shape[3], figures.shape[4]
+            )[indices].reshape(-1, *figures.shape[1:]) # <- figures level sampling
+            x_sampled = torch.sum(figures_sampled, dim=1).permute(0, 3, 1, 2)
+            # x_sampled, figures_sampled, _, _ = self.decode(z_sampled) <- this is the original latents level sampling
 
         # encoder pass
         with nullcontext() if (use_consistency_loss or extended_consistency_loss) else torch.no_grad():
