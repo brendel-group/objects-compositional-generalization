@@ -75,8 +75,8 @@ def one_epoch(
 
         output_dict = model(
             images,
-            use_consistency_loss=use_consistency_loss,
-            extended_consistency_loss=extended_consistency_loss,
+            use_consistency_loss=use_consistency_loss * (epoch >= consistency_ignite_epoch),
+            extended_consistency_loss=extended_consistency_loss * (epoch >= consistency_ignite_epoch),
         )
 
         if "loss" in output_dict:
@@ -341,6 +341,7 @@ def run(
                 **locals(),
                 checkpoint_name=f"before_ignite_model_{sample_mode_train}_{seed}",
             )
+            optimizer.param_groups[0]["lr"] = optimizer.param_groups[0]["lr"] * 2
 
         rec_loss = one_epoch(
             model,
