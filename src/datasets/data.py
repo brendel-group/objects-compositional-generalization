@@ -110,7 +110,7 @@ class SpriteWorldDataset(torch.utils.data.TensorDataset):
                     f"Delta is too big for 'no_overlap' mode, setting it to {max_delta}."
                 )
                 self.delta = max_delta
-
+        self.ignore_adjusment = False
         if z is None:
             self.z = sample_latents(
                 self.n_samples,
@@ -122,6 +122,7 @@ class SpriteWorldDataset(torch.utils.data.TensorDataset):
             )
         else:
             self.z = z
+            self.ignore_adjusment = True
 
         self.__generate_ind = 0
         self.env = environment.Environment(
@@ -142,20 +143,21 @@ class SpriteWorldDataset(torch.utils.data.TensorDataset):
     def __generate(self):
         """Generates a list of sprites from generated latents for the environment."""
 
-        if self.sample_mode in ["diagonal", "off_diagonal", "pure_off_diagonal"]:
+        if self.sample_mode in ["diagonal", "off_diagonal", "pure_off_diagonal"] and not self.ignore_adjusment:
             # adjusting x to avoid overlapping sprites
             x_scaled = self.__adjust_x_coord(self.z[self.__generate_ind, :, :2])
             self.z[self.__generate_ind, :, 0] = x_scaled
 
-        if self.sample_mode in ["off_diagonal", "pure_off_diagonal"]:
+        if self.sample_mode in ["off_diagonal", "pure_off_diagonal"] and not self.ignore_adjusment:
             # removing same shapes (this artifact comes from "floor" rounding)
             shape = self.__adjust_shape(self.z[self.__generate_ind, :, 2])
             self.z[self.__generate_ind, :, 2] = shape
 
-        # adjusting figure scale to avoid severely overlapping sprites
-        self.z[self.__generate_ind, :, 3] = self.cfg["scale"].min + (
-            self.z[self.__generate_ind, :, 3] - self.cfg["scale"].min
-        ) * (1 / (self.n_slots + 1))
+        if not self.ignore_adjusment:
+            # adjusting figure scale to avoid severely overlapping sprites
+            self.z[self.__generate_ind, :, 3] = self.cfg["scale"].min + (
+                self.z[self.__generate_ind, :, 3] - self.cfg["scale"].min
+            ) * (1 / (self.n_slots + 1))
 
         # generating sprites
         sample = self.z[self.__generate_ind]

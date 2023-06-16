@@ -31,7 +31,7 @@ def r2_score(
     # shuffling predicted latents to match true latents
     predicted_latents = predicted_latents.gather(
         1,
-        indices[:, :, 1].unsqueeze(-1).expand(-1, -1, true_latents.shape[-1]),
+        indices[:, :, 1].unsqueeze(-1).expand(-1, -1, predicted_latents.shape[-1]),
     )
     true_latents = true_latents.flatten(start_dim=1)
     predicted_latents = predicted_latents.flatten(start_dim=1)
