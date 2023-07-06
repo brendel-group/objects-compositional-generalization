@@ -9,12 +9,22 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
-from src.utils.training_utils import sample_z_from_latents
+from src.utils.training_utils import (
+    sample_z_from_latents,
+    sample_z_from_latents_no_overlap,
+)
 
 
 class SlotAttentionAutoEncoder(nn.Module):
     def __init__(
-        self, encoder, decoder, num_slots, num_iterations, hid_dim, dataset_name
+        self,
+        encoder,
+        decoder,
+        num_slots,
+        num_iterations,
+        hid_dim,
+        dataset_name,
+        no_overlap=False,
     ):
         """Builds the Slot Attention-based auto-encoder.
         Args:
@@ -27,6 +37,7 @@ class SlotAttentionAutoEncoder(nn.Module):
         self.hid_dim = hid_dim
         self.num_slots = num_slots
         self.num_iterations = num_iterations
+        self.no_overlap = no_overlap
 
         self.encoder_cnn = encoder
         self.decoder_cnn = decoder
@@ -93,6 +104,8 @@ class SlotAttentionAutoEncoder(nn.Module):
         x,
         use_consistency_loss=False,
         extended_consistency_loss=False,
+        true_latents=None,
+        true_figures=None,
     ) -> Dict[str, Any]:
         hat_z = self.encode(x)
         hat_x, figures, masks, reconstructions = self.decode(hat_z)
@@ -104,31 +117,69 @@ class SlotAttentionAutoEncoder(nn.Module):
             "reconstructed_masks": masks.permute(1, 0, 4, 2, 3),
             "raw_figures": reconstructions.permute(1, 0, 4, 2, 3),
         }
+
         # we always want to look at the consistency loss, but we not always want to backpropagate through consistency part
+        if (
+            true_latents is not None
+            and true_figures is not None
+            and use_consistency_loss
+            and self.no_overlap
+        ):
+            with torch.no_grad():
+                z_sampled = sample_z_from_latents_no_overlap(
+                    true_latents, hat_z, true_figures, figures, hat_z.device
+                )
+        else:
+            z_sampled = None
+
         consistency_pass_dict = self.consistency_pass(
-            hat_z, figures, use_consistency_loss, extended_consistency_loss
+            hat_z,
+            figures,
+            use_consistency_loss,
+            extended_consistency_loss,
+            z_sampled=z_sampled,
         )
 
         output_dict.update(consistency_pass_dict)
         return output_dict
 
-    def consistency_pass(self, hat_z, figures, use_consistency_loss, extended_consistency_loss):
+    def consistency_pass(
+        self,
+        hat_z,
+        figures,
+        use_consistency_loss,
+        extended_consistency_loss,
+        z_sampled=None,
+    ):
         # getting imaginary samples
         with torch.no_grad():
-            z_sampled, indices = sample_z_from_latents(hat_z.detach())
-            figures_sampled = figures.reshape(
-                -1, figures.shape[2], figures.shape[3], figures.shape[4]
-            )[indices].reshape(-1, *figures.shape[1:]) # <- figures level sampling
-            x_sampled = torch.sum(figures_sampled, dim=1).permute(0, 3, 1, 2)
-            # x_sampled, figures_sampled, _, _ = self.decode(z_sampled) <- this is the original latents level sampling
+            if z_sampled is None:
+                z_sampled, indices = sample_z_from_latents(hat_z.detach())
+
+            # z_sampled, indices = sample_z_from_latents(hat_z.detach())
+            # figures_sampled = figures.reshape(
+            #     -1, figures.shape[2], figures.shape[3], figures.shape[4]
+            # )[indices].reshape(
+            #     -1, *figures.shape[1:]
+            # )  # <- figures level sampling
+            # x_sampled = torch.sum(figures_sampled, dim=1).permute(0, 3, 1, 2)
+            (
+                x_sampled,
+                figures_sampled,
+                sampled_masks,
+                raw_sampled_figures,
+            ) = self.decode(z_sampled)
+            x_sampled = x_sampled.clamp(0, 1)
 
         # encoder pass
-        with nullcontext() if (use_consistency_loss or extended_consistency_loss) else torch.no_grad():
+        with nullcontext() if (
+            use_consistency_loss or extended_consistency_loss
+        ) else torch.no_grad():
             hat_z_sampled = self.encode(x_sampled)
 
         # decoder pass
         with nullcontext() if extended_consistency_loss else torch.no_grad():
-            hat_x_sampled, _, sampled_masks, raw_sampled_figures = self.decode(
+            hat_x_sampled, _, hat_sampled_masks, hat_raw_sampled_figures = self.decode(
                 hat_z_sampled
             )
 

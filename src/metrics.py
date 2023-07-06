@@ -42,6 +42,22 @@ def r2_score(
     return avg_r2_score, r2_score_raw
 
 
+def image_r2_score(true_images: torch.Tensor, predicted_images: torch.Tensor):
+    r2_vw = R2Score(
+        num_outputs=np.prod(true_images.shape[1:]), multioutput="variance_weighted"
+    ).to(true_images.device)
+
+    # add eps to avoid division by zero
+    true_images += 1e-7
+
+    reconstruction_error = r2_vw(
+        predicted_images.reshape(predicted_images.shape[0], -1),
+        true_images.reshape(true_images.shape[0], -1),
+    )
+
+    return reconstruction_error
+
+
 def hungarian_slots_loss(
     true_latents: torch.Tensor,
     predicted_latents: torch.Tensor,
@@ -64,9 +80,12 @@ def hungarian_slots_loss(
         loss: sum/mean of distances ^ p
         transposed_indices: indices of matched slots (later used for R2 score calculation)
     """
-    pairwise_cost = torch.pow(
-        torch.cdist(true_latents, predicted_latents, p=p).transpose(-1, -2), p
-    )
+    # Normalizing the latents
+    true_latents = (true_latents - true_latents.mean()) / (true_latents.std() + 1e-8)
+    predicted_latents = (predicted_latents - predicted_latents.mean()) / (predicted_latents.std() + 1e-8)
+
+    pairwise_cost = torch.cdist(true_latents, predicted_latents, p=p).transpose(-1, -2).pow(p)
+
     indices = np.array(
         list(map(linear_sum_assignment, pairwise_cost.detach().cpu().numpy()))
     )  # applying hungarian algorithm to every sample in batch

@@ -13,6 +13,8 @@ import src.datasets.utils as data_utils
 import src.utils.training_utils as training_utils
 import src.utils.wandb_utils as wandb_utils
 
+from contextlib import nullcontext
+
 from .models import base_models, slot_attention
 
 
@@ -31,8 +33,6 @@ def one_epoch(
     consistency_term_weight=1,
     consistency_encoder_term_weight=1,
     consistency_decoder_term_weight=1,
-    consistency_scheduler=False,
-    consistency_scheduler_step=200,
     consistency_ignite_epoch=0,
     use_consistency_loss=True,
     extended_consistency_loss=False,
@@ -52,6 +52,7 @@ def one_epoch(
     accum_total_loss = 0
     accum_model_loss = 0
     accum_reconstruction_loss = 0
+    accum_reconstruction_r2 = 0
     accum_slots_loss = 0
     accum_r2_score = 0
     accum_ari_score = 0
@@ -75,8 +76,12 @@ def one_epoch(
 
         output_dict = model(
             images,
-            use_consistency_loss=use_consistency_loss * (epoch >= consistency_ignite_epoch),
-            extended_consistency_loss=extended_consistency_loss * (epoch >= consistency_ignite_epoch),
+            use_consistency_loss=use_consistency_loss
+            * (epoch >= consistency_ignite_epoch),
+            extended_consistency_loss=extended_consistency_loss
+            * (epoch >= consistency_ignite_epoch),
+            true_latents=true_latents,
+            true_figures=true_figures,
         )
 
         if "loss" in output_dict:
@@ -89,7 +94,15 @@ def one_epoch(
         )
         accum_reconstruction_loss += reconstruction_loss.item() * accum_adjustment
 
-        if model.model_name != "SlotMLPAdditive" and epoch % freq == 0:
+        reconstruction_r2 = metrics.image_r2_score(
+            images, output_dict["reconstructed_image"]
+        )
+        accum_reconstruction_r2 += reconstruction_r2.item() * accum_adjustment
+
+        if (
+            model.model_name not in ["SlotMLPAdditive", "SlotMLPMonolithic"]
+            and epoch % freq == 0
+        ):
             true_masks = training_utils.get_masks(images, true_figures)
             ari_score = metrics.ari(
                 true_masks,
@@ -122,28 +135,33 @@ def one_epoch(
             total_loss += slots_loss
 
         # calculate consistency loss
-        consistency_encoder_loss, _ = metrics.hungarian_slots_loss(
-            output_dict["sampled_latents"],
-            output_dict["predicted_sampled_latents"],
-            device,
-        )
+        if model.model_name != "SlotMLPMonolithic":
+            with nullcontext() if (use_consistency_loss) else torch.no_grad():
+                consistency_encoder_loss, _ = metrics.hungarian_slots_loss(
+                    output_dict["sampled_latents"],
+                    output_dict["predicted_sampled_latents"],
+                    device,
+                )
+                accum_consistency_encoder_loss += (
+                    consistency_encoder_loss.item() * accum_adjustment
+                )
 
-        accum_consistency_encoder_loss += (
-            consistency_encoder_loss.item() * accum_adjustment
-        )
+            consistency_loss = (
+                consistency_encoder_loss
+                * consistency_encoder_term_weight
+                * use_consistency_loss
+            )
 
-        consistency_decoder_loss = metrics.reconstruction_loss(
-            output_dict["sampled_image"], output_dict["reconstructed_sampled_image"]
-        )
-        accum_consistency_decoder_loss += (
-            consistency_decoder_loss.item() * accum_adjustment
-        )
+        if model.model_name != "SlotMLPMonolithic":
+            with nullcontext() if (extended_consistency_loss) else torch.no_grad():
+                consistency_decoder_loss = metrics.reconstruction_loss(
+                    output_dict["sampled_image"],
+                    output_dict["reconstructed_sampled_image"],
+                )
+                accum_consistency_decoder_loss += (
+                    consistency_decoder_loss.item() * accum_adjustment
+                )
 
-        consistency_loss = (
-            consistency_encoder_loss
-            * consistency_encoder_term_weight
-            * use_consistency_loss
-        )
         # add to consistency loss only if extended_consistency_loss is True
         if extended_consistency_loss:
             consistency_loss += (
@@ -152,15 +170,9 @@ def one_epoch(
                 * extended_consistency_loss
             )
 
-        if consistency_scheduler and epoch >= consistency_ignite_epoch:
-            consistency_loss *= min(
-                consistency_term_weight,
-                (epoch - consistency_ignite_epoch) / consistency_scheduler_step,
-            )
-        else:
+        if model.model_name != "SlotMLPMonolithic":
             consistency_loss *= consistency_term_weight
-
-        accum_consistency_loss += consistency_loss.item() * accum_adjustment
+            accum_consistency_loss += consistency_loss.item() * accum_adjustment
 
         if (
             use_consistency_loss or extended_consistency_loss
@@ -212,8 +224,6 @@ def run(
     consistency_term_weight,
     consistency_encoder_term_weight,
     consistency_decoder_term_weight,
-    consistency_scheduler,
-    consistency_scheduler_step,
     consistency_ignite_epoch,
     use_consistency_loss,
     extended_consistency_loss,
@@ -230,6 +240,7 @@ def run(
     delta,
     seed,
     load_checkpoint,
+    experiment_group_name,
     test_freq=20,
 ):
     """
@@ -245,6 +256,7 @@ def run(
         config=wandb_config,
         project="object_centric_ood",
         dir=os.path.join(data_utils.data_path, "wandb"),
+        group=experiment_group_name,
     )
 
     for mode in ["ID", "OOD", "RDM"]:
@@ -290,7 +302,11 @@ def run(
         ch_dim = 64  # originally 64
 
     if model_name == "SlotMLPAdditive":
-        model = base_models.SlotMLPAdditive(in_channels, n_slots, n_slot_latents).to(
+        model = base_models.SlotMLPAdditive(
+            in_channels, n_slots, n_slot_latents, no_overlap=no_overlap
+        ).to(device)
+    elif model_name == "SlotMLPMonolithic":
+        model = base_models.SlotMLPMonolithic(in_channels, n_slots, n_slot_latents).to(
             device
         )
     elif model_name == "SlotAttention":
@@ -313,6 +329,7 @@ def run(
             num_iterations=3,
             hid_dim=n_slot_latents,
             dataset_name=dataset_name,
+            no_overlap=no_overlap,
         ).to(device)
     elif model_name == "MONet":
         model = src.models.get_monet_model(n_slots, n_slot_latents, device)

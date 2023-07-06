@@ -37,6 +37,7 @@ def wandb_log(
     accum_ari_score=None,
     per_latent_r2_score=None,
     accum_reconstruction_loss=None,
+    accum_reconstruction_r2=None,
     images=None,
     reconstructed_image=None,
     reconstructed_figures=None,
@@ -70,6 +71,9 @@ def wandb_log(
 
     if accum_reconstruction_loss is not None:
         log_dict[f"{mode} reconstruction loss"] = accum_reconstruction_loss
+
+    if accum_reconstruction_r2 is not None:
+        log_dict[f"{mode} reconstruction r2"] = accum_reconstruction_r2
 
     if accum_slots_loss is not None:
         log_dict[f"{mode} slots loss"] = accum_slots_loss
@@ -131,7 +135,7 @@ def wandb_log_code(run):
     if os.path.exists(data_utils.code_path):
         print(os.listdir(data_utils.code_path))
         run.log_code(
-            data_utils.code_path,
+            root=data_utils.code_path,
             include_fn=lambda path: any(
                 path.endswith(ending) for ending in [".py", ".yaml"]
             ),

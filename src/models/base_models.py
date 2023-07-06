@@ -3,7 +3,10 @@ from typing import Dict, Any
 
 import torch
 
-from src.utils.training_utils import sample_z_from_latents
+from src.utils.training_utils import (
+    sample_z_from_latents,
+    sample_z_from_latents_no_overlap,
+)
 from . import utils
 
 
@@ -113,12 +116,15 @@ class SlotMLPMonolithic(torch.nn.Module):
         self.decoder = SlotMLPMonolithicDecoder(in_channels, n_slots, n_slot_latents)
         self.model_name = "SlotMLPMonolithic"
 
-    def forward(self, x):
+    def forward(self, x, **kwargs):
         latents = self.encoder(x)
         latents = latents.view(-1, self.n_slots * self.n_slot_latents)
         image = self.decoder(latents)
         latents = latents.view(-1, self.n_slots, self.n_slot_latents)
-        return image, latents
+        return {
+            "reconstructed_image": image,
+            "predicted_latents": latents,
+        }
 
 
 class SlotMLPAdditive(torch.nn.Module):
@@ -134,11 +140,13 @@ class SlotMLPAdditive(torch.nn.Module):
         n_slots: int,
         n_slot_latents: int,
         twin_headed: bool = False,
+        no_overlap: bool = False,
     ) -> None:
         super(SlotMLPAdditive, self).__init__()
         self.n_slots = n_slots
         self.n_slot_latents = n_slot_latents
         self.twin_headed = twin_headed
+        self.no_overlap = no_overlap
         if twin_headed:
             self.encoder = TwinHeadedSlotEncoder(in_channels, n_slots, n_slot_latents)
         else:
@@ -147,15 +155,24 @@ class SlotMLPAdditive(torch.nn.Module):
         self.model_name = "SlotMLPAdditive"
 
     def consistency_pass(
-        self, hat_z, figures, use_consistency_loss, extended_consistency_loss
+        self,
+        hat_z,
+        figures,
+        use_consistency_loss,
+        extended_consistency_loss,
+        z_sampled=None,
     ):
         # getting imaginary samples
         with torch.no_grad():
-            z_sampled, indices = sample_z_from_latents(hat_z.detach())
-            figures_sampled = figures.reshape(
-                -1, figures.shape[2], figures.shape[3], figures.shape[4]
-            )[indices].reshape(-1, *figures.shape[1:])
-            x_sampled = torch.sum(figures_sampled, dim=1)
+            if z_sampled is None:
+                z_sampled, indices = sample_z_from_latents(hat_z.detach())
+            # z_sampled, indices = sample_z_from_latents(hat_z.detach())
+            # figures_sampled = figures.reshape(
+            #     -1, figures.shape[2], figures.shape[3], figures.shape[4]
+            # )[indices].reshape(-1, *figures.shape[1:])
+            # x_sampled = torch.sum(figures_sampled, dim=1)
+            x_sampled, figures_sampled = self.decoder(z_sampled)
+            x_sampled = torch.clamp(x_sampled, 0, 1)
 
         # encoder pass
         with nullcontext() if (
@@ -180,6 +197,8 @@ class SlotMLPAdditive(torch.nn.Module):
         x,
         use_consistency_loss=False,
         extended_consistency_loss=False,
+        true_latents=None,
+        true_figures=None,
     ) -> Dict[str, Any]:
         """
         Compute forward pass of the model.
@@ -212,8 +231,25 @@ class SlotMLPAdditive(torch.nn.Module):
             "reconstructed_figures": figures.permute(1, 0, 2, 3, 4),
         }
         # we always want to look at the consistency loss, but we not always want to backpropagate through consistency part
+        if (
+            true_latents is not None
+            and true_figures is not None
+            and self.no_overlap
+            and use_consistency_loss
+        ):
+            with torch.no_grad():
+                z_sampled = sample_z_from_latents_no_overlap(
+                    true_latents, hat_z, true_figures, figures, hat_z.device
+                )
+        else:
+            z_sampled = None
+
         consistency_pass_dict = self.consistency_pass(
-            hat_z, figures, use_consistency_loss, extended_consistency_loss
+            hat_z,
+            figures,
+            use_consistency_loss,
+            extended_consistency_loss,
+            z_sampled=z_sampled,
         )
 
         output_dict.update(consistency_pass_dict)
