@@ -40,23 +40,6 @@ class PreGeneratedDataset(torch.utils.data.Dataset):
         if self.n_samples is not None:
             self.images = self.images[: self.n_samples]
             self.latents = self.latents[: self.n_samples]
-            # print("Truncated dataset to {} samples".format(self.n_samples))
-            # #
-            # # # 99 - 1 option
-            # #
-            # # get parent directory of path
-            # parent_dir = os.path.dirname(path)
-            # print(parent_dir)
-            # images_1 = torch.load(
-            #     os.path.join(parent_dir, "random", "images", "images.pt")
-            # )[: int(self.n_samples * 0.01)]
-            # latents_1 = torch.load(
-            #     os.path.join(parent_dir, "random", "latents", "latents.pt")
-            # )[: int(self.n_samples * 0.01)]
-            #
-            # # concatenate the two tensors
-            # self.images = torch.cat((self.images, images_1), 0)
-            # self.latents = torch.cat((self.latents, latents_1), 0)
 
     def __len__(self):
         return len(self.images)
@@ -65,9 +48,75 @@ class PreGeneratedDataset(torch.utils.data.Dataset):
         return self.images[idx], self.latents[idx]
 
 
-def collate_fn_normalizer(batch, bias=0, scale=1):
+class MixedDataset(torch.utils.data.Dataset):
+    """Loads pre-generated mixed SpriteWorldDataset from a directory."""
+    def __init__(self, path: str, n_samples: int = None):
+        self.path = path
+        self.n_samples = n_samples
+
+        self.images = self._load_and_concat_images()
+        self.latents = self._load_and_concat_latents()
+
+    def __len__(self):
+        return len(self.images)
+
+    def __getitem__(self, idx):
+        return self.images[idx], self.latents[idx]
+
+    def _load_and_concat_images(self):
+        # Get the list of image files
+        image_files = sorted(os.listdir(os.path.join(self.path, "images")))
+        image_tensors = []
+
+        for image_file in image_files:
+            # Load the image tensor
+            image_tensor = torch.load(os.path.join(self.path, "images", image_file))
+
+            # Create a tensor of zeros with the desired final shape
+            zeros = torch.zeros(
+                image_tensor.shape[0],
+                5,
+                image_tensor.shape[2],
+                image_tensor.shape[3],
+                image_tensor.shape[4],
+            )
+
+            # Fill in the parts of the zeros tensor with the loaded tensor
+            zeros[:, -image_tensor.shape[1] :, ...] = image_tensor
+
+            # Add the tensor to the list
+            image_tensors.append(zeros)
+
+        # Concatenate all tensors along the first dimension
+        return torch.cat(image_tensors, dim=0)
+
+    def _load_and_concat_latents(self):
+        # Get the list of latent files
+        latent_files = sorted(os.listdir(os.path.join(self.path, "latents")))
+        latent_tensors = []
+
+        for latent_file in latent_files:
+            # Load the latent tensor
+            latent_tensor = torch.load(os.path.join(self.path, "latents", latent_file))
+
+            # Create a tensor of zeros with the desired final shape
+            zeros = torch.zeros(latent_tensor.shape[0], 4, latent_tensor.shape[2])
+
+            # Fill in the parts of the zeros tensor with the loaded tensor
+            zeros[:, :latent_tensor.shape[1], :] = latent_tensor
+
+            # Add the tensor to the list
+            latent_tensors.append(zeros)
+
+        # Concatenate all tensors along the first dimension
+        return torch.cat(latent_tensors, dim=0)
+
+
+def collate_fn_normalizer(batch, bias=0, scale=1, mixed=False):
     """Normalize latents target to [0, 1]. Used in dataloader."""
     images, latents = zip(*batch)
     latents = torch.stack(latents)
+    if mixed:
+        return torch.stack(images), latents
     latents = (latents - bias) / scale
     return torch.stack(images), latents

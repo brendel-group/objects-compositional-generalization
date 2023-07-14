@@ -6,6 +6,7 @@ from torchvision import transforms as transforms
 from src.datasets import configs, data
 from src.datasets.utils import (
     PreGeneratedDataset,
+    MixedDataset,
     dump_generated_dataset,
     collate_fn_normalizer,
 )
@@ -87,13 +88,19 @@ class SpritesWorldDataWrapper(DataWrapper):
         delta,
         no_overlap,
         batch_size,
+        mixed=False,
         **kwargs,
     ):
         target_path = os.path.join(
             self.path, "train", sample_mode_train, f"{n_slots}_objects"
         )
-        if self.load and os.path.exists(target_path):
+        if self.load and os.path.exists(target_path) and not mixed:
             train_dataset = PreGeneratedDataset(target_path, n_samples_truncate)
+            print(f"Train dataset successfully loaded from {target_path}.")
+        elif mixed:
+            # go on directory back
+            target_path = os.path.join(self.path, "train", sample_mode_train, "mixed")
+            train_dataset = MixedDataset(target_path)
             print(f"Train dataset successfully loaded from {target_path}.")
         else:
             train_dataset = data.SpriteWorldDataset(
@@ -115,7 +122,7 @@ class SpritesWorldDataWrapper(DataWrapper):
             train_dataset,
             batch_size=batch_size,
             shuffle=True,
-            collate_fn=lambda b: collate_fn_normalizer(b, self.min_offset, self.scale),
+            collate_fn=lambda b: collate_fn_normalizer(b, self.min_offset, self.scale, mixed=mixed),
         )
 
         return train_loader
@@ -128,16 +135,24 @@ class SpritesWorldDataWrapper(DataWrapper):
         delta,
         no_overlap,
         batch_size,
+        mixed=False,
         **kwargs,
     ):
         target_path = os.path.join(
             self.path, "test", sample_mode_test, f"{n_slots}_objects"
         )
-        if self.load and os.path.exists(target_path):
+        if self.load and os.path.exists(target_path) and not mixed:
             test_dataset = PreGeneratedDataset(target_path)
             print(
                 f"Test {sample_mode_test} dataset successfully loaded from {target_path}."
             )
+        elif mixed:
+            # go on directory back
+            target_path = os.path.join(self.path, "test", sample_mode_test, "mixed")
+            print(
+                f"Test {sample_mode_test} dataset successfully loaded from {target_path}."
+            )
+            test_dataset = MixedDataset(target_path)
         else:
             test_dataset = data.SpriteWorldDataset(
                 n_samples_test,
@@ -158,7 +173,7 @@ class SpritesWorldDataWrapper(DataWrapper):
             test_dataset,
             batch_size=batch_size,
             shuffle=False,
-            collate_fn=lambda b: collate_fn_normalizer(b, self.min_offset, self.scale),
+            collate_fn=lambda b: collate_fn_normalizer(b, self.min_offset, self.scale, mixed=mixed),
         )
 
         return test_loader

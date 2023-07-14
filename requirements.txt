@@ -12,3 +12,4 @@ wandb
 tqdm
 hydra-core
 Pillow
+lion-pytorch

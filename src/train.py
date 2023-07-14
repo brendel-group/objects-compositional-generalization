@@ -17,7 +17,6 @@ from contextlib import nullcontext
 
 from .models import base_models, slot_attention
 
-
 # TODO: remove this
 wandb.login(key="b17ca470c2ce70dd9d6c3ce01c6fc7656633fe91")
 
@@ -95,7 +94,7 @@ def one_epoch(
         accum_reconstruction_loss += reconstruction_loss.item() * accum_adjustment
 
         reconstruction_r2 = metrics.image_r2_score(
-            images, output_dict["reconstructed_image"]
+            images.clone(), output_dict["reconstructed_image"]
         )
         accum_reconstruction_r2 += reconstruction_r2.item() * accum_adjustment
 
@@ -136,7 +135,7 @@ def one_epoch(
 
         # calculate consistency loss
         if model.model_name != "SlotMLPMonolithic":
-            with nullcontext() if (use_consistency_loss) else torch.no_grad():
+            with nullcontext() if use_consistency_loss else torch.no_grad():
                 consistency_encoder_loss, _ = metrics.hungarian_slots_loss(
                     output_dict["sampled_latents"],
                     output_dict["predicted_sampled_latents"],
@@ -153,7 +152,7 @@ def one_epoch(
             )
 
         if model.model_name != "SlotMLPMonolithic":
-            with nullcontext() if (extended_consistency_loss) else torch.no_grad():
+            with nullcontext() if extended_consistency_loss else torch.no_grad():
                 consistency_decoder_loss = metrics.reconstruction_loss(
                     output_dict["sampled_image"],
                     output_dict["reconstructed_sampled_image"],
@@ -240,7 +239,7 @@ def run(
     delta,
     seed,
     load_checkpoint,
-    experiment_group_name,
+    save_name,
     test_freq=20,
 ):
     """
@@ -256,7 +255,6 @@ def run(
         config=wandb_config,
         project="object_centric_ood",
         dir=os.path.join(data_utils.data_path, "wandb"),
-        group=experiment_group_name,
     )
 
     for mode in ["ID", "OOD", "RDM"]:
@@ -285,9 +283,6 @@ def run(
     test_loader_ood = wrapper.get_test_loader(
         sample_mode_test=sample_mode_test_ood, **signature_args
     )
-    test_loader_random = wrapper.get_test_loader(
-        sample_mode_test="random", **signature_args
-    )
     train_loader = wrapper.get_train_loader(**signature_args)
 
     min_reconstruction_loss_ID = float("inf")
@@ -303,12 +298,16 @@ def run(
 
     if model_name == "SlotMLPAdditive":
         model = base_models.SlotMLPAdditive(
-            in_channels, n_slots, n_slot_latents, no_overlap=no_overlap
+            in_channels,
+            n_slots,
+            n_slot_latents,
+            no_overlap=no_overlap,
+            dataset_name=dataset_name,
         ).to(device)
     elif model_name == "SlotMLPMonolithic":
-        model = base_models.SlotMLPMonolithic(in_channels, n_slots, n_slot_latents).to(
-            device
-        )
+        model = base_models.SlotMLPMonolithic(
+            in_channels, n_slots, n_slot_latents, dataset_name=dataset_name
+        ).to(device)
     elif model_name == "SlotAttention":
         encoder = slot_attention.SlotAttentionEncoder(
             resolution=resolution,
@@ -385,12 +384,16 @@ def run(
                 model_name in ["SlotAttention", "SlotMLPAdditive", "MONet", "GENESIS"]
                 and epoch % 100 == 0
             ):
+                if dataset_name == "dsprites":
+                    categorical_dimensions = [2]
+                elif dataset_name == "kubric":
+                    categorical_dimensions = [5]
+
                 id_score_id, id_score_ood = metrics.identifiability_score(
                     model,
-                    n_slot_latents,
-                    train_loader,
                     test_loader_id,
                     test_loader_ood,
+                    categorical_dimensions,
                     device,
                 )
                 wandb.log(
@@ -419,15 +422,6 @@ def run(
                 **signature_args,
             )
 
-            random_rec_loss = one_epoch(
-                model,
-                test_loader_random,
-                optimizer,
-                mode="test_RDM",
-                epoch=epoch,
-                **signature_args,
-            )
-
             if id_rec_loss < min_reconstruction_loss_ID:
                 min_reconstruction_loss_ID = id_rec_loss
                 print(
@@ -450,8 +444,8 @@ def run(
                     checkpoint_name=f"best_ood_model_{sample_mode_train}_{seed}",
                 )
 
-    training_utils.save_checkpoint(
-        path=data_utils.data_path,
-        **locals(),
-        checkpoint_name=f"last_train_model_{sample_mode_train}_{seed}",
-    )
+        training_utils.save_checkpoint(
+            path=data_utils.data_path,
+            **locals(),
+            checkpoint_name=save_name,
+        )

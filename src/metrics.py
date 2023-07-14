@@ -1,12 +1,12 @@
-from typing import Tuple
+from typing import Tuple, List
 
 import numpy as np
 import torch
-import tqdm
 from scipy.optimize import linear_sum_assignment
 from sklearn.metrics import adjusted_rand_score
-from torch import nn
 from torchmetrics import R2Score
+
+from src.model_evaluation import evaluate_model
 
 
 def r2_score(
@@ -82,9 +82,13 @@ def hungarian_slots_loss(
     """
     # Normalizing the latents
     true_latents = (true_latents - true_latents.mean()) / (true_latents.std() + 1e-8)
-    predicted_latents = (predicted_latents - predicted_latents.mean()) / (predicted_latents.std() + 1e-8)
+    predicted_latents = (predicted_latents - predicted_latents.mean()) / (
+        predicted_latents.std() + 1e-8
+    )
 
-    pairwise_cost = torch.cdist(true_latents, predicted_latents, p=p).transpose(-1, -2).pow(p)
+    pairwise_cost = (
+        torch.cdist(true_latents, predicted_latents, p=p).transpose(-1, -2).pow(p)
+    )
 
     indices = np.array(
         list(map(linear_sum_assignment, pairwise_cost.detach().cpu().numpy()))
@@ -157,140 +161,111 @@ def ari(
 
 def identifiability_score(
     model: torch.nn.Module,
-    latent_size: int,
-    train_loader: torch.utils.data.DataLoader,
     test_id_loader: torch.utils.data.DataLoader,
     test_ood_loader: torch.utils.data.DataLoader,
-    device: str = "cuda",
+    categorical_dimensions: List[int],
+    device: str = "cpu",
 ):
-    """
-    Calculates identifiability score for a model. Identifiability score is calculated as R2 score
-    between true and predicted latents after mapping true latents to predicted latents space using
-    MLP.
-
-    Args:
-        model: model to calculate identifiability score for
-        latent_size: size of latent space
-        train_loader: train loader
-        test_id_loader: test loader for in-distribution data
-        test_ood_loader: test loader for out-of-distribution data
-        device: device to run on
-
-    Returns:
-        (id_score, ood_score): identifiability score for in-distribution and out-of-distribution data
-    """
-
-    model.eval()
-
-    input_dim = train_loader.dataset[0][1].shape[1]
-    n_slots = train_loader.dataset[0][1].shape[0]
-
-    mlp = nn.Sequential(
-        nn.Linear(input_dim, 64),
-        nn.ReLU(),
-        nn.Linear(64, 128),
-        nn.ReLU(),
-        nn.Linear(128, 128),
-        nn.ReLU(),
-        nn.Linear(128, 64),
-        nn.ReLU(),
-        nn.Linear(64, latent_size),
-    ).to(device)
-
-    optimizer = torch.optim.Adam(mlp.parameters(), lr=1e-3)
-    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=5, gamma=0.5)
-    criterion = nn.MSELoss()
-    best_id_scores = [torch.tensor(-torch.inf), torch.tensor(-torch.inf)]
-    for epoch in tqdm.tqdm(range(20)):
-        mlp.train()
-        for i, (images, true_latents) in enumerate(train_loader):
-            optimizer.zero_grad()
-
-            figures = images[:, :-1, ...].to(device)
-            images = images[:, -1, ...].to(device).squeeze(1)
+    # collect test set latents and predicted latents
+    z_true_id = []
+    z_pred_id = []
+    z_true_ood = []
+    z_pred_ood = []
+    with torch.no_grad():
+        for images, true_latents in test_id_loader:
+            images = images[:, -1, ...].to(device)
             true_latents = true_latents.to(device)
+            z_true_id.append(true_latents)
+            output = model(images, not_ignore_consistency=False)
+            z_pred_id.append(output["predicted_latents"])
 
-            with torch.no_grad():
-                output = model(images)
-                predicted_latents = output["predicted_latents"]
-                predicted_figures = output["reconstructed_figures"]
+    z_true_id = torch.cat(z_true_id, dim=0)
+    z_pred_id = torch.cat(z_pred_id, dim=0)
 
-            mapped_latents = torch.stack(
-                [mlp(true_latents[:, i, :]) for i in range(n_slots)], dim=1
-            )
+    with torch.no_grad():
+        for images, true_latents in test_ood_loader:
+            images = images[:, -1, ...].to(device)
+            true_latents = true_latents.to(device)
+            z_true_ood.append(true_latents)
+            output = model(images, not_ignore_consistency=False)
+            z_pred_ood.append(output["predicted_latents"])
 
-            figures_reshaped = figures.view(figures.shape[0], figures.shape[1], -1)
-            predicted_figures = predicted_figures.permute(1, 0, 2, 3, 4)
-            predicted_figures_reshaped = predicted_figures.reshape(
-                predicted_figures.shape[0], predicted_figures.shape[1], -1
-            )
-            with torch.no_grad():
-                # no loss calculated here, just indices for resolving permutations
+    z_true_ood = torch.cat(z_true_ood, dim=0)
+    z_pred_ood = torch.cat(z_pred_ood, dim=0)
 
-                # original code
-                _, transposed_indices = hungarian_slots_loss(
-                    figures_reshaped,
-                    predicted_figures_reshaped,
-                    device=device,
-                )
 
-            transposed_indices = transposed_indices.to(device)
+    # calculate identifiability score
+    identifiability_score_id = evaluate_model(
+        z_true_id,
+        z_pred_id,
+        categorical_dimensions,
+        max_training_epochs=100,
+        model_depth=5,
+        train_val_test_split=(0.7, 0.1, 0.2),
+        verbose=2,
+        standard_scale=True,
+        z_mask_values=0,
+    )
+    (
+        performance_id,
+        continuous_performance_id,
+        categorical_performance_id,
+        (r2_scores_id, accuracies_id),
+        (ceiling_r2_scores_id, ceiling_accuracies_id),
+        models_id,
+    ) = identifiability_score_id
+    print("ID performance:")
+    print(
+        f"{performance_id=}",
+        f"\n{continuous_performance_id=}",
+        f"\n{categorical_performance_id=}",
+        f"\n{r2_scores_id=}",
+        f"\n{accuracies_id=}",
+        f"\n{ceiling_r2_scores_id=}",
+        f"\n{ceiling_accuracies_id=}",
+    )
 
-            predicted_latents = predicted_latents.gather(
-                1,
-                transposed_indices[:, :, 1]
-                .unsqueeze(-1)
-                .expand(-1, -1, mapped_latents.shape[-1]),
-            )
+    identifiability_score_ood = evaluate_model(
+        z_true_ood,
+        z_pred_ood,
+        categorical_dimensions,
+        max_training_epochs=100,
+        model_depth=5,
+        train_val_test_split=(0.7, 0.1, 0.2),
+        verbose=2,
+        standard_scale=True,
+        z_mask_values=0,
+        provided_models=models_id,
+    )
 
-            loss = criterion(
-                mapped_latents.view(-1, latent_size),
-                predicted_latents.view(-1, latent_size),
-            )
-            loss.backward()
-            optimizer.step()
-        scheduler.step()
-        mlp.eval()
-        id_scores = []
-        for loader in [test_id_loader, test_ood_loader]:
-            r2_scores = []
-            for i, (images, true_latents) in enumerate(loader):
-                figures = images[:, :-1, ...].to(device)
-                images = images[:, -1, ...].to(device).squeeze(1)
-                true_latents = true_latents.to(device)
+    print("\nOOD performance:")
+    (
+        performance_ood,
+        continuous_performance_ood,
+        categorical_performance_ood,
+        (r2_scores_ood, accuracies_ood),
+        (ceiling_r2_scores_ood, ceiling_accuracies_ood),
+        _
+    ) = identifiability_score_ood
 
-                with torch.no_grad():
-                    output = model(images)
-                    predicted_latents = output["predicted_latents"]
-                    predicted_figures = output["reconstructed_figures"]
+    print(
+        f"{performance_ood=}",
+        f"\n{continuous_performance_ood=}",
+        f"\n{categorical_performance_ood=}",
+        f"\n{r2_scores_ood=}",
+        f"\n{accuracies_ood=}",
+        f"\n{ceiling_r2_scores_ood=}",
+        f"\n{ceiling_accuracies_ood=}",
+    )
+    id_score_id = r2_scores_id[0] * (
+        z_true_id.shape[-1] - len(categorical_dimensions)
+    ) + accuracies_id[0] * len(categorical_dimensions)
+    id_score_id /= z_true_id.shape[-1]
 
-                mapped_latents = torch.stack(
-                    [mlp(true_latents[:, i, :]) for i in range(n_slots)], dim=1
-                )
+    id_score_ood = r2_scores_ood[0] * (
+        z_true_ood.shape[-1] - len(categorical_dimensions)
+    ) + accuracies_ood[0] * len(categorical_dimensions)
+    id_score_ood /= z_true_ood.shape[-1]
 
-                figures_reshaped = figures.view(figures.shape[0], figures.shape[1], -1)
-                predicted_figures = predicted_figures.permute(1, 0, 2, 3, 4)
-                predicted_figures_reshaped = predicted_figures.reshape(
-                    predicted_figures.shape[0], predicted_figures.shape[1], -1
-                )
-                with torch.no_grad():
-                    _, transposed_indices = hungarian_slots_loss(
-                        figures_reshaped,
-                        predicted_figures_reshaped,
-                        device=device,
-                    )
-                avg_score, _ = r2_score(
-                    mapped_latents, predicted_latents, transposed_indices
-                )
-                r2_scores.append(avg_score)
-            id_scores.append(np.mean(r2_scores))
-
-        if id_scores[0] > best_id_scores[0]:
-            best_id_scores[0] = id_scores[0]
-        if id_scores[1] > best_id_scores[1]:
-            best_id_scores[1] = id_scores[1]
-
-        print(f"Best OOD id score: {best_id_scores[1]}")
-        print(f"Best ID id score: {best_id_scores[0]}")
-
-    return best_id_scores[0].item(), best_id_scores[1].item()
+    print(f"{id_score_id=}", f"{id_score_ood=}")
+    return id_score_id, id_score_ood

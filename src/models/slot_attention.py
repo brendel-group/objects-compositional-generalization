@@ -106,6 +106,7 @@ class SlotAttentionAutoEncoder(nn.Module):
         extended_consistency_loss=False,
         true_latents=None,
         true_figures=None,
+        not_ignore_consistency=True,
     ) -> Dict[str, Any]:
         hat_z = self.encode(x)
         hat_x, figures, masks, reconstructions = self.decode(hat_z)
@@ -132,13 +133,16 @@ class SlotAttentionAutoEncoder(nn.Module):
         else:
             z_sampled = None
 
-        consistency_pass_dict = self.consistency_pass(
-            hat_z,
-            figures,
-            use_consistency_loss,
-            extended_consistency_loss,
-            z_sampled=z_sampled,
-        )
+        if not_ignore_consistency:
+            consistency_pass_dict = self.consistency_pass(
+                hat_z,
+                figures,
+                use_consistency_loss,
+                extended_consistency_loss,
+                z_sampled=z_sampled,
+            )
+        else:
+            consistency_pass_dict = {}
 
         output_dict.update(consistency_pass_dict)
         return output_dict
