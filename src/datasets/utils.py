@@ -112,11 +112,11 @@ class MixedDataset(torch.utils.data.Dataset):
         return torch.cat(latent_tensors, dim=0)
 
 
-def collate_fn_normalizer(batch, bias=0, scale=1, mixed=False):
+def collate_fn_normalizer(batch, bias=0, scale=1, mixed=False, device="cpu"):
     """Normalize latents target to [0, 1]. Used in dataloader."""
     images, latents = zip(*batch)
     latents = torch.stack(latents)
     if mixed:
         return torch.stack(images), latents
     latents = (latents - bias) / scale
-    return torch.stack(images), latents
+    return torch.stack(images).to(device), latents.to(device)

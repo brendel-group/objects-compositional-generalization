@@ -1,6 +1,6 @@
 --extra-index-url https://download.pytorch.org/whl/cu117
 git+https://github.com/JackBrady/spriteworld
-torch
+torch==2.0.1
 torchvision
 torchaudio
 numpy
@@ -13,3 +13,4 @@ tqdm
 hydra-core
 Pillow
 lion-pytorch
+
