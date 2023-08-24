@@ -12,8 +12,8 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--model_name",
-        choices=["SlotMLPAdditive", "SlotAttention", "MONet", "GENESIS"],
-        default="SlotMLPAdditive",
+        choices=["SlotMLPAdditive", "SlotAttention", "MONet", "GENESIS", "SlotMLPMonolithic"],
+        default="SlotAttention",
         help="Model to use. One of the models defined in base_models.py.",
     )
     parser.add_argument(
@@ -31,7 +31,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--extended_consistency_loss",
         choices=[True, False],
-        default=True,
+        default=False,
         help="Whether to use extended consistency loss.",
     )
     parser.add_argument(
@@ -68,7 +68,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--consistency_encoder_term_weight",
         type=float,
-        default=0.0001,
+        default=1.0,
         help="Weight for consistency encoder loss in consistency loss.",
     )
     parser.add_argument(
@@ -80,20 +80,8 @@ if __name__ == "__main__":
     parser.add_argument(
         "--consistency_ignite_epoch",
         type=int,
-        default=50,
-        help="Epoch to start consistency loss.",
-    )
-    parser.add_argument(
-        "--consistency_scheduler",
-        choices=[True, False],
-        default=False,
-        help="Whether to use consistency scheduler min(consistency_term_weight, epoch / consistency_scheduler).",
-    )
-    parser.add_argument(
-        "--consistency_scheduler_step",
-        type=int,
         default=150,
-        help="How often to decrease consistency term weight.",
+        help="Epoch to start consistency loss.",
     )
     parser.add_argument(
         "--n_samples_train",
@@ -132,7 +120,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--sample_mode_train",
         type=str,
-        default="random",
+        default="diagonal",
         help="Sampling mode for training dataset.",
     )
 
@@ -146,7 +134,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--sample_mode_test_ood",
         type=str,
-        default="off_diagonal",
+        default="no_overlap_off_diagonal",
         help="Sampling mode for OOD testing dataset.",
     )
 
@@ -165,8 +153,12 @@ if __name__ == "__main__":
         default=None,
         help="Path to checkpoint to load.",
     )
+
     args = parser.parse_args()
-    # args.load_checkpoint = f"/mnt/qb/work/bethge/apanfilov27/object_centric_consistency_project/checkpoints/MONet_{args.seed}.pt"
+    # args.load_checkpoint = f"/mnt/qb/work/bethge/apanfilov27/object_centric_consistency_project/checkpoints/SlotAttention_MIXEDobj_deccons_400_{args.seed}.pt"
+    # args.load_checkpoint = f"/mnt/qb/work/bethge/apanfilov27/object_centric_consistency_project/checkpoints/SlotAttention_3obj_overlaps_enccons_{args.seed}_checkpoint.pt"
+
     print(args)
 
+    args.save_name = f"temp" # < -- change this to specify the name of the model
     train.run(**vars(args))

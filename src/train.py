@@ -4,7 +4,7 @@ import time
 import torch
 import torch.utils.data
 
-import wandb
+# import wandb
 
 import src.datasets.wrappers
 import src.metrics as metrics
@@ -17,8 +17,8 @@ from contextlib import nullcontext
 
 from .models import base_models, slot_attention
 
-# TODO: remove this
-wandb.login(key="b17ca470c2ce70dd9d6c3ce01c6fc7656633fe91")
+# # TODO: remove this
+# wandb.login(key="b17ca470c2ce70dd9d6c3ce01c6fc7656633fe91")
 
 
 def one_epoch(
@@ -36,7 +36,7 @@ def one_epoch(
     use_consistency_loss=True,
     extended_consistency_loss=False,
     unsupervised_mode=False,
-    freq=10,
+    freq=1,
     **kwargs,
 ):
     """One epoch of training or testing. Please check main.py for keyword parameters descriptions'."""
@@ -198,14 +198,14 @@ def one_epoch(
         accum_consistency_encoder_loss,
         accum_consistency_decoder_loss,
     )
-    if epoch % freq == 0:
-        print(f"ARI score: {accum_ari_score:.4f}")
-        wandb_utils.wandb_log(
-            data_path,
-            kwargs["dataset_name"],
-            **output_dict,
-            **locals(),
-        )
+    # if epoch % freq == 0:
+    #     print(f"ARI score: {accum_ari_score:.4f}")
+    #     wandb_utils.wandb_log(
+    #         data_path,
+    #         kwargs["dataset_name"],
+    #         **output_dict,
+    #         **locals(),
+    #     )
 
     return accum_reconstruction_loss
 
@@ -250,20 +250,20 @@ def run(
     data_path = os.path.join(data_utils.data_path, dataset_name)
 
     signature_args = locals().copy()
-    wandb_config = signature_args
-    wandb.init(
-        config=wandb_config,
-        project="object_centric_ood",
-        dir=os.path.join(data_utils.data_path, "wandb"),
-    )
+    # wandb_config = signature_args
+    # wandb.init(
+    #     config=wandb_config,
+    #     project="object_centric_ood",
+    #     dir=os.path.join(data_utils.data_path, "wandb"),
+    # )
 
-    for mode in ["ID", "OOD", "RDM"]:
-        wandb.define_metric(f"test_{mode} reconstruction loss", summary="min")
-    wandb.define_metric("ID_score_ID", summary="max")
-    wandb.define_metric("ID_score_OOD", summary="max")
-    for mode in ["ID", "OOD", "RDM"]:
-        wandb.define_metric(f"test_{mode} ari score", summary="max")
-    wandb_utils.wandb_log_code(wandb.run)
+    # for mode in ["ID", "OOD", "RDM"]:
+    #     wandb.define_metric(f"test_{mode} reconstruction loss", summary="min")
+    # wandb.define_metric("ID_score_ID", summary="max")
+    # wandb.define_metric("ID_score_OOD", summary="max")
+    # for mode in ["ID", "OOD", "RDM"]:
+    #     wandb.define_metric(f"test_{mode} ari score", summary="max")
+    # wandb_utils.wandb_log_code(wandb.run)
 
     time_created = time.strftime("%Y-%m-%d_%H-%M-%S", time.localtime())
     training_utils.set_seed(seed)
@@ -329,13 +329,15 @@ def run(
             hid_dim=n_slot_latents,
             dataset_name=dataset_name,
             no_overlap=no_overlap,
+            sampling=True, # change to False for the fixed model
+            softmax=True, # change to False for the fixed model
         ).to(device)
     elif model_name == "MONet":
         model = src.models.get_monet_model(n_slots, n_slot_latents, device)
     elif model_name == "GENESIS":
         model = src.models.get_genesis_model(n_slots, n_slot_latents, device)
 
-    wandb.watch(model)
+    # wandb.watch(model)
 
     # warmup
     optimizer = torch.optim.AdamW(model.parameters(), lr=1e-7, weight_decay=0.001)
@@ -379,10 +381,10 @@ def run(
 
         print("Learning rate: ", optimizer.param_groups[0]["lr"])
 
-        if epoch % test_freq == 0:
+        if epoch % 1 == 0:
             if (
                 model_name in ["SlotAttention", "SlotMLPAdditive", "MONet", "GENESIS"]
-                and epoch % 100 == 0
+                and epoch % 1 == 0
             ):
                 if dataset_name == "dsprites":
                     categorical_dimensions = [2]
@@ -396,13 +398,13 @@ def run(
                     categorical_dimensions,
                     device,
                 )
-                wandb.log(
-                    {
-                        "ID_score_ID": id_score_id,
-                        "ID_score_OOD": id_score_ood,
-                    },
-                    step=epoch,
-                )
+                # wandb.log(
+                #     {
+                #         "ID_score_ID": id_score_id,
+                #         "ID_score_OOD": id_score_ood,
+                #     },
+                #     step=epoch,
+                # )
 
             id_rec_loss = one_epoch(
                 model,
@@ -422,30 +424,15 @@ def run(
                 **signature_args,
             )
 
-            if id_rec_loss < min_reconstruction_loss_ID:
-                min_reconstruction_loss_ID = id_rec_loss
-                print(
-                    f"\nNew best ID model!\nEpoch: {epoch}\nID reconstruction loss: {id_rec_loss}\n"
-                )
-                training_utils.save_checkpoint(
-                    path=data_utils.data_path,
-                    **locals(),
-                    checkpoint_name=f"best_id_model_{sample_mode_train}_{seed}",
-                )
+            checkpoint_save_path = data_utils.data_path # change this to your path
+            training_utils.save_checkpoint(
+                path=checkpoint_save_path,
+                **locals(),
+                checkpoint_name=f"{save_name}_{epoch}",
+            )
 
-            if ood_rec_loss < min_reconstruction_loss_OOD:
-                min_reconstruction_loss_OOD = ood_rec_loss
-                print(
-                    f"\nNew best OOD model!\nEpoch: {epoch}\nOOD reconstruction loss: {ood_rec_loss}\n"
-                )
-                training_utils.save_checkpoint(
-                    path=data_utils.data_path,
-                    **locals(),
-                    checkpoint_name=f"best_ood_model_{sample_mode_train}_{seed}",
-                )
-
-        training_utils.save_checkpoint(
-            path=data_utils.data_path,
-            **locals(),
-            checkpoint_name=save_name,
-        )
+    training_utils.save_checkpoint(
+        path=checkpoint_save_path,
+        **locals(),
+        checkpoint_name=f"{save_name}_{epoch}",
+    )

@@ -1,16 +1,16 @@
-import os
 import random
 
 import matplotlib.pyplot as plt
 import numpy as np
-import seaborn as sns
 import torch
 import torchvision.transforms as transforms
 import tqdm
 from torch import nn
 
-from src.datasets import data
 import src.datasets.configs as data_configs
+from src.datasets import data
+from src.models import base_models
+from src.models import slot_attention
 
 default_cfg = data_configs.SpriteWorldConfig()
 
@@ -66,16 +66,17 @@ def plot_dataset_images(dataset, rows=5, cols=5, id_mask=True):
 def create_traversed_dataset(initial_sample, n_steps=4):
     # Define the ranges for y and c_0
     y_range = torch.linspace(0.2, 0.8, n_steps)
+
     c_0_range = torch.linspace(0.05, 0.95, n_steps)
 
-    y_combinations = torch.cartesian_prod(y_range, y_range)
+    # y_combinations = torch.cartesian_prod(y_range, y_range)
     c_0_combinations = torch.cartesian_prod(c_0_range, c_0_range)
 
     # Create a tensor of repeated initial samples with the shape (n_steps, initial_sample[0], initial_sample[1])
     samples = initial_sample.repeat((n_steps**2, 1, 1))
 
-    samples[:, 0, 1] = y_combinations[:, 0]
-    samples[:, 1, 1] = y_combinations[:, 1]
+    # samples[:, 0, 1] = y_combinations[:, 0]
+    # samples[:, 1, 1] = y_combinations[:, 1]
     samples[:, 0, -3] = c_0_combinations[:, 0]
     samples[:, 1, -3] = c_0_combinations[:, 1]
 
@@ -133,10 +134,10 @@ def get_binary_id_mask(
     for x, z in dataset:
         val = (
             check_distance_from_diag(np.array([z[0][1].item(), z[1][1].item()]))
-            <= 0.125
+            <= 0.125 * 2
         ) and (
-            check_distance_from_diag(np.array([z[0][-3].item(), z[1][-3].item()]))
-            <= 0.125
+            check_distance_from_diag(np.array([z[0][-1].item(), z[1][-1].item()]))
+            <= 0.125 * 2
         )
         points.append(int(val))
 
@@ -230,3 +231,97 @@ def get_id_bounds(x, y, shape):
         np.array(x_line_right) - 0.5,
         np.array(y_line_right) - 0.5,
     )
+
+
+def load_model_and_hook(path, model_name):
+    # Load the checkpoint
+    checkpoint = torch.load(path)
+
+    # Determine which model to load based on the model name
+    if model_name == "SlotAttention":
+        encoder = slot_attention.SlotAttentionEncoder(
+            resolution=(64, 64),
+            hid_dim=16,
+            ch_dim=32,
+            dataset_name="dsprites",
+        )
+        decoder = slot_attention.SlotAttentionDecoder(
+            hid_dim=16,
+            ch_dim=32,
+            resolution=(64, 64),
+            dataset_name="dsprites",
+        )
+        model = slot_attention.SlotAttentionAutoEncoder(
+            encoder=encoder,
+            decoder=decoder,
+            num_slots=2,
+            num_iterations=3,
+            hid_dim=16,
+            dataset_name="dsprites",
+        )
+        decoder_hook = model.decode
+    elif model_name == "SlotMLPAdditive":
+        model = base_models.SlotMLPAdditive(3, 2, 16)
+        decoder_hook = model.decoder
+    else:
+        raise ValueError("Invalid model name")
+
+    # Load the model weights and set the model to eval model
+    model.load_state_dict(checkpoint["model_state_dict"])
+    model.eval()
+
+    return model, decoder_hook
+
+
+def evaluate_function_over_seeds(func, seeds, *args, **kwargs):
+    results = {"mse_model": [], "mse_decoder": [], "figures_mse_model": []}
+
+    for seed in seeds:
+        random.seed(seed)
+        np.random.seed(seed)
+        torch.manual_seed(seed)
+
+        temp_results = func(*args, **kwargs)
+
+        # If results lists are empty, initialize them with lists for each sample
+        if not results["mse_model"]:
+            results["mse_model"] = [
+                [] for _ in range(len(temp_results["model_performances"]))
+            ]
+            results["mse_decoder"] = [
+                [] for _ in range(len(temp_results["model_performances"]))
+            ]
+            results["figures_mse_model"] = [
+                [] for _ in range(len(temp_results["model_performances"]))
+            ]
+
+        for i in range(len(temp_results["model_performances"])):
+            results["mse_model"][i].append(
+                temp_results["model_performances"][i]["mse_model"]
+            )
+            results["mse_decoder"][i].append(
+                temp_results["model_performances"][i]["mse_decoder"]
+            )
+            results["figures_mse_model"][i].append(
+                temp_results["model_performances"][i]["figures_mse_model"]
+            )
+
+    # Compute median for each sample
+    for key in results:
+        results[key] = [
+            np.median(torch.stack(results[key][i]), axis=0)
+            for i in range(len(results[key]))
+        ]
+
+    # re-arrange the results
+    out = []
+    for i in range(len(results["mse_model"])):
+        out.append(dict())
+        for key in results:
+            out[i][key] = results[key][i]
+
+    return out
+
+def cast_models_to_device(models):
+    for model in models:
+        model.cuda()

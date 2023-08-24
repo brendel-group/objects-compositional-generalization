@@ -25,6 +25,8 @@ class SlotAttentionAutoEncoder(nn.Module):
         hid_dim,
         dataset_name,
         no_overlap=False,
+        softmax=True,
+        sampling=True,
     ):
         """Builds the Slot Attention-based auto-encoder.
         Args:
@@ -51,12 +53,15 @@ class SlotAttentionAutoEncoder(nn.Module):
             iters=self.num_iterations,
             eps=1e-8,
             hidden_dim=64,
+            use_sampling=sampling,
         )
 
         if dataset_name == "dsprites":
             self.spatial_broadcast = 64
         elif dataset_name == "kubric":
             self.spatial_broadcast = 8
+
+        self.use_softmax = softmax
 
     def encode(self, x):
         # `x` is an image which has shape: [batch_size, num_channels, width, height].
@@ -91,7 +96,10 @@ class SlotAttentionAutoEncoder(nn.Module):
         ).split([3, 1], dim=-1)
 
         # Normalize alpha masks over slots.
-        masks = F.softmax(masks, dim=1)
+        if self.use_softmax:
+            masks = F.softmax(masks, dim=1)
+        else:
+            masks = torch.sigmoid(masks)
         xhs = reconstructions * masks
 
         # `hat_x` has shape: [batch_size, num_channels, width, height].
@@ -199,7 +207,9 @@ class SlotAttentionAutoEncoder(nn.Module):
 
 
 class SlotAttention(nn.Module):
-    def __init__(self, num_slots, dim, iters=3, eps=1e-8, hidden_dim=128):
+    def __init__(
+        self, num_slots, dim, iters=3, eps=1e-8, hidden_dim=128, use_sampling=True
+    ):
         super().__init__()
         self.num_slots = num_slots
         self.iters = iters
@@ -223,12 +233,24 @@ class SlotAttention(nn.Module):
         self.norm_slots = nn.LayerNorm(dim)
         self.norm_pre_ff = nn.LayerNorm(dim)
 
+        self.use_sampling = use_sampling
+
     def forward(self, inputs, num_slots=None):
         b, n, d = inputs.shape
         n_s = num_slots if num_slots is not None else self.num_slots
         mu = self.slots_mu.expand(b, n_s, -1)
         sigma = self.slots_log_sigma.expand(b, n_s, -1).exp()
-        slots = mu + sigma * torch.randn_like(sigma)
+
+        # remove randomness from slots initialization
+        if not self.use_sampling:
+            g = torch.Generator()
+            g.manual_seed(0)
+
+            slots = mu + sigma * torch.normal(0, 1, size=sigma.shape, generator=g).to(
+                sigma.device
+            )
+        else:
+            slots = mu + sigma * torch.randn_like(sigma)
 
         inputs = self.norm_input(inputs)
         k, v = self.to_k(inputs), self.to_v(inputs)
