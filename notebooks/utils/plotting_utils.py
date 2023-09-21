@@ -13,8 +13,8 @@ def plot_random_dataset_images(dataset, rows=2, cols=3):
     for row in range(rows):
         for col in range(cols):
             sample = (
-                dataset[np.random.choice(range(len(dataset)))][0]
-                .reshape(64, 64, 3)
+                dataset[np.random.choice(range(len(dataset)))][0][-1]
+                .permute(1, 2, 0)
                 .numpy()
                 .astype(np.uint8)
             )
