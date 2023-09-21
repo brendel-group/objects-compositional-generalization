@@ -1,16 +1,19 @@
---extra-index-url https://download.pytorch.org/whl/cu117
-git+https://github.com/JackBrady/spriteworld
-torch==2.0.1
+torch
 torchvision
 torchaudio
+torchmetrics
 numpy
 pandas
-seaborn
 scipy
-torchmetrics
 wandb
 tqdm
 hydra-core
-Pillow
 lion-pytorch
-
+matplotlib
+seaborn
+scikit-learn
+seaborn
+Pillow==9.5.0
+dm-env
+hydra-core
+git+https://github.com/kotekjedi/spriteworld_legacy.git
