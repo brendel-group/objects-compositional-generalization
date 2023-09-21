@@ -224,19 +224,7 @@ class SpriteWorldDataset(torch.utils.data.TensorDataset):
                 x_diag += ort_vec
 
             elif self.sample_mode == "off_diagonal":
-                _n = 10
-                z_out = torch.Tensor(0, self.n_slots, 1)
-                while z_out.shape[0] < _n:
-                    z_sampled = torch.rand(_n, self.n_slots, 1)
-                    diag = torch.ones(_n, self.n_slots, 1)
-                    ort_vec = z_sampled - diag * (z_sampled * diag).sum(
-                        axis=1, keepdim=True
-                    ) / (diag * diag).sum(axis=1, keepdim=True)
-                    off_d_mask = (ort_vec.norm(dim=1) > self.delta).flatten(1).all(1)
-                    z_sampled = z_sampled[off_d_mask]
-
-                    z_out = torch.cat([z_out, z_sampled])
-                x_diag = z_out[:1].squeeze()
+               x_diag = generated_x_y[:, 0]
 
             if self.no_overlap:
                 k = 1 / self.n_slots
