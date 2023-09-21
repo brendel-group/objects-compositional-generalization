@@ -94,7 +94,7 @@ def sample_delta_off_diagonal_cube(
         ).sum(axis=1, keepdim=True)
 
         # get rid of vector if distance to the diagonal is too small
-        off_d_mask = (ort_vec.norm(dim=1) > delta).flatten(1).all(1)
+        off_d_mask = (ort_vec.norm(dim=1) > delta).flatten(1).any(1)
         z_sampled = z_sampled[off_d_mask]
 
         z_out = torch.cat([z_out, z_sampled])
