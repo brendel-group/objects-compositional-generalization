@@ -1,0 +1,17 @@
+version: '3.8'
+
+services:
+  notebooks:
+    image: object_centric_paper
+    ports:
+      - "8889:8888"
+    volumes:
+      - .:/code
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
