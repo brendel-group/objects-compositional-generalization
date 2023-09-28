@@ -213,6 +213,8 @@ def run(
     consistency_decoder_term_weight,
     consistency_ignite_epoch,
     use_consistency_loss,
+    softmax,
+    sampling,
     extended_consistency_loss,
     unsupervised_mode,
     n_samples_train,
@@ -300,8 +302,8 @@ def run(
             hid_dim=n_slot_latents,
             dataset_name=dataset_name,
             no_overlap=no_overlap,
-            sampling=True,  # change to False for the fixed model
-            softmax=True,  # change to False for the fixed model
+            sampling=sampling,  # change to False for the "fixed" model
+            softmax=softmax,  # change to False for the "fixed" model
         ).to(device)
 
     # wandb.watch(model)

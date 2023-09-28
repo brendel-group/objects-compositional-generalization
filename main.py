@@ -20,6 +20,18 @@ if __name__ == "__main__":
         help="Model to use. One of the models defined in base_models.py.",
     )
     parser.add_argument(
+        "--softmax",
+        choices=[True, False],
+        default=True,
+        help="Whether to use softmax in SlotAttention.",
+    )
+    parser.add_argument(
+        "--sampling",
+        choices=[True, False],
+        default=True,
+        help="Whether to use sampling in SlotAttention. False corresponds to the deterministic version of SlotAttention.",
+    )
+    parser.add_argument(
         "--dataset_name",
         choices=["dsprites", "kubric"],
         default="dsprites",

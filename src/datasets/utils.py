@@ -8,6 +8,28 @@ import torch
 import tqdm
 
 data_path = "SET THIS TO YOUR DATA PATH"
+# data should ook like this:
+# data_path
+# └── dsprites
+#    ├── train
+#    │   └── diagonal
+#    │       ├── images
+#    │       │   └── images.pt
+#    │       └── latents
+#    │           └── latents.pt
+#    └── test
+#        ├── diagonal
+#        │   ├── images
+#        │   │   └── images.pt
+#        │   └── latents
+#        │       └── latents.pt
+#        └── no_overlap_off_diagonal
+#            ├── images
+#            │   └── images.pt
+#            └── latents
+#                └── latents.pt
+#
+# Link to the downloading the dataset would be avaliable when the code is published.
 code_path = "SET THIS TO YOUR DATA PATH"  # not nessesary
 
 

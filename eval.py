@@ -1,5 +1,4 @@
 import os
-import pickle
 
 import numpy as np
 import src
@@ -7,12 +6,11 @@ import src.metrics as metrics
 import torch
 from src.datasets import utils as data_utils
 from src.models import base_models, slot_attention
-
-# from functorch import jacfwd
+from src.utils import training_utils
 from torch.func import jacfwd
 
 
-def load_model_and_hook(path, model_name):
+def load_model_and_hook(path, model_name, softmax=True, sampling=True):
     # Load the checkpoint
     checkpoint = torch.load(path)
 
@@ -37,8 +35,8 @@ def load_model_and_hook(path, model_name):
             num_iterations=3,
             hid_dim=16,
             dataset_name="dsprites",
-            sampling=True,
-            softmax=True,
+            sampling=sampling,
+            softmax=softmax,
         )
         decoder_hook = model.decode
     elif model_name == "SlotMLPAdditive":
@@ -129,6 +127,16 @@ def calculate_image_r2(images, out):
     return r2.detach().cpu().numpy()
 
 
+def calculate_image_mse(images, out):
+    """
+    Calculate the image mse score
+    """
+    x_hat = out["reconstructed_image"]
+
+    mse = metrics.reconstruction_loss(images, x_hat)
+    return mse.detach().cpu().numpy()
+
+
 def calculate_encoder_consistency(out):
     """
     Calculate the encoder consistency score
@@ -139,6 +147,18 @@ def calculate_encoder_consistency(out):
         "cuda",
     )
     return consistency_encoder_loss.detach().cpu().numpy()
+
+
+def calculate_ari(images, out):
+    true_figures = images[:, :-1, ...].cuda()
+    images = images[:, -1, ...].cuda()
+
+    true_masks = training_utils.get_masks(images, true_figures)
+    ari_score = metrics.ari(
+        true_masks,
+        out["reconstructed_masks"].detach().permute(1, 0, 2, 3, 4),
+    )
+    return ari_score.detach().cpu().numpy()
 
 
 def evaluate():
@@ -182,6 +202,8 @@ def evaluate():
     # example of how you could load multiple models, feel free to change this
     paths = "MODEL PATH"
     model_name = "SlotMLPAdditive"
+    softmax = False  # only for SlotAttention
+    sampling = False  # only for SlotAttention
     paths_and_names = []
     for name in os.listdir(paths):
         if name.endswith(".pt"):
@@ -190,7 +212,9 @@ def evaluate():
     models = []
     hooks = []
     for path, name in paths_and_names:
-        model, decoder_hook = load_model_and_hook(path, name)
+        model, decoder_hook = load_model_and_hook(
+            path, name, softmax=softmax, samplig=sampling
+        )
         models.append(model)
         hooks.append(decoder_hook)
 
@@ -202,8 +226,12 @@ def evaluate():
     ood_contrasts = []
     id_image_r2 = []
     ood_image_r2 = []
+    id_image_mse = []
+    ood_image_mse = []
     id_encoder_consistency = []
     ood_encoder_consistency = []
+    id_ari = []
+    ood_ari = []
 
     # evaluating provided models
     for model, hook in zip(models, hooks):
@@ -211,9 +239,10 @@ def evaluate():
         id_id_score, ood_id_score = calculate_identifiability(
             id_loader, ood_loader, model
         )
-        id_id_score, ood_id_score = 0, 0
 
         id_r2, ood_r2 = 0, 0
+        id_mse, ood_mse = 0, 0
+        id_ari_score, ood_ari_score = 0, 0
         id_consistency, ood_consistency = 0, 0
         id_contrast, ood_contrast = 0, 0
 
@@ -222,7 +251,7 @@ def evaluate():
             id_images = id_images[:, -1, ...].cuda()  # taking the last image
 
             ood_images, _ = ood_batch
-            ood_images = ood_images[:, -1, ...].cuda()  # taking the last imag
+            ood_images = ood_images[:, -1, ...].cuda()  # taking the last image
 
             id_out = model(id_images)
             ood_out = model(ood_images)
@@ -236,6 +265,12 @@ def evaluate():
             id_consistency += calculate_encoder_consistency(id_out).mean()
             ood_consistency += calculate_encoder_consistency(ood_out).mean()
 
+            id_mse += calculate_image_mse(id_images, id_out)
+            ood_mse += calculate_image_mse(ood_images, ood_out)
+
+            id_ari_score += calculate_ari(id_images, id_out)
+            ood_ari_score += calculate_ari(ood_images, ood_out)
+
         id_contrasts.append(id_contrast * batch_size / n_samples_test)
         ood_contrasts.append(ood_contrast * batch_size / n_samples_test)
 
@@ -244,6 +279,12 @@ def evaluate():
 
         id_encoder_consistency.append(id_consistency * batch_size / n_samples_test)
         ood_encoder_consistency.append(ood_consistency * batch_size / n_samples_test)
+
+        id_image_mse.append(id_mse * batch_size / n_samples_test)
+        ood_image_mse.append(ood_mse * batch_size / n_samples_test)
+
+        id_ari.append(id_ari_score * batch_size / n_samples_test)
+        ood_ari.append(ood_ari_score * batch_size / n_samples_test)
 
         id_id_scores.append(id_id_score)
         ood_id_scores.append(ood_id_score)
@@ -254,6 +295,12 @@ def evaluate():
     print("ood_contrasts", ood_contrasts)
     print("id_image_r2", id_image_r2)
     print("ood_image_r2", ood_image_r2)
+    print("id_encoder_consistency", id_encoder_consistency)
+    print("ood_encoder_consistency", ood_encoder_consistency)
+    print("id_image_mse", id_image_mse)
+    print("ood_image_mse", ood_image_mse)
+    print("id_ari", id_ari)
+    print("ood_ari", ood_ari)
 
 
 if __name__ == "__main__":
