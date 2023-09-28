@@ -1,20 +1,12 @@
+import random
 import sys
-
-# print(sys.path)
-sys.path.append("D:\\git_projects\\bethgelab\\lab_rotation\\object_centric_ood")
-# print(sys.path)
 
 import numpy as np
 import torch
-import random
-
-from src.datasets import data, utils, configs
-from src.metrics import hungarian_slots_loss
-
-
-from torchvision import transforms as transforms
-
 import tqdm
+from src.datasets import configs, data, utils
+from src.metrics import hungarian_slots_loss
+from torchvision import transforms as transforms
 
 seed = 43
 random.seed(seed)

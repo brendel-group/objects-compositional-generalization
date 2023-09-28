@@ -1,16 +1,15 @@
-from src.models import base_models, slot_attention
-from src.datasets import utils as data_utils
-import src.metrics as metrics
-
 import os
+import pickle
+
+import numpy as np
 import src
+import src.metrics as metrics
 import torch
+from src.datasets import utils as data_utils
+from src.models import base_models, slot_attention
 
 # from functorch import jacfwd
 from torch.func import jacfwd
-
-import numpy as np
-import pickle
 
 
 def load_model_and_hook(path, model_name):
@@ -181,11 +180,12 @@ def evaluate():
     )
 
     # example of how you could load multiple models, feel free to change this
-    paths = "/mnt/qb/work/bethge/apanfilov27/slurm_scripts/models/SlotMLPAdditive_2obj_300_enccons_no_overlaps"
+    paths = "MODEL PATH"
+    model_name = "SlotMLPAdditive"
     paths_and_names = []
     for name in os.listdir(paths):
         if name.endswith(".pt"):
-            paths_and_names.append((os.path.join(paths, name), "SlotMLPAdditive"))
+            paths_and_names.append((os.path.join(paths, name), model_name))
 
     models = []
     hooks = []
@@ -205,7 +205,6 @@ def evaluate():
     id_encoder_consistency = []
     ood_encoder_consistency = []
 
-
     # evaluating provided models
     for model, hook in zip(models, hooks):
         # mean id scores
@@ -220,11 +219,10 @@ def evaluate():
 
         for i, (id_batch, ood_batch) in enumerate(zip(id_loader, ood_loader)):
             id_images, _ = id_batch
-            id_images = id_images[:, -1, ...].cuda() # taking the last image
-
+            id_images = id_images[:, -1, ...].cuda()  # taking the last image
 
             ood_images, _ = ood_batch
-            ood_images = ood_images[:, -1, ...].cuda() # taking the last imag
+            ood_images = ood_images[:, -1, ...].cuda()  # taking the last imag
 
             id_out = model(id_images)
             ood_out = model(ood_images)
@@ -250,13 +248,13 @@ def evaluate():
         id_id_scores.append(id_id_score)
         ood_id_scores.append(ood_id_score)
 
-
     print("id_id_scores", id_id_scores)
     print("ood_id_scores", ood_id_scores)
     print("id_contrasts", id_contrasts)
     print("ood_contrasts", ood_contrasts)
     print("id_image_r2", id_image_r2)
     print("ood_image_r2", ood_image_r2)
+
 
 if __name__ == "__main__":
     evaluate()

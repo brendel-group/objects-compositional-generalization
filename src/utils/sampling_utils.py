@@ -1,6 +1,5 @@
 import numpy as np
 import torch
-
 from src.datasets.configs import Config
 
 
@@ -42,33 +41,6 @@ def sample_random(
         z_out[:, :, i] = z
         i += 1
     return z_out
-
-
-def sample_delta_pure_off_diagonal_cube(
-    n_samples: int, n_slots: int, n_latents: int, delta: float, oversampling: int = 100
-) -> torch.Tensor:
-    """
-    WARNING: Thaddaeus said that this method is redundant, thus this function is not properly tested.
-
-    Sample points where NO component lies within a n_slots-cube with side length delta from the diagonal.
-
-    Function took from by Thaddaeus Wiedemer's code with almost no changes.
-    """
-    _n = oversampling * n_samples
-    z_out = torch.Tensor(0, n_slots, n_latents)
-    while z_out.shape[0] < n_samples:
-        z_sampled = torch.rand(_n, n_slots, n_latents)
-        triuidx = torch.triu_indices(n_slots, n_slots)
-        mutual_distances = (
-            z_sampled.unsqueeze(1).repeat(1, z_sampled.shape[1], 1, 1)
-            - z_sampled.unsqueeze(1).repeat(1, z_sampled.shape[1], 1, 1).transpose(1, 2)
-        )[:, triuidx[0], triuidx[1], :]
-        mask = (mutual_distances.abs() > delta).any(dim=1).all(dim=1)
-        idx = mask.nonzero().squeeze()
-        z_out = torch.cat([z_out, z_sampled[idx]])
-
-    z_out = z_out[:n_samples]
-    return z_out[:n_samples]
 
 
 def sample_delta_off_diagonal_cube(
@@ -182,10 +154,6 @@ def sample_diagonal(
         z_out = sample_delta_diagonal_cube(n_samples, n_slots, n_latents, delta)
     elif mode == "off_diagonal":
         z_out = sample_delta_off_diagonal_cube(n_samples, n_slots, n_latents, delta)
-    elif mode == "pure_off_diagonal":
-        z_out = sample_delta_pure_off_diagonal_cube(
-            n_samples, n_slots, n_latents, delta
-        )
     else:
         raise ValueError(f"Unknown mode: {mode}")
 

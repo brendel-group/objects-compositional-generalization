@@ -1,12 +1,12 @@
 from contextlib import nullcontext
-from typing import Dict, Any
+from typing import Any, Dict
 
 import torch
-
 from src.utils.training_utils import (
     sample_z_from_latents,
     sample_z_from_latents_no_overlap,
 )
+
 from . import utils
 
 
@@ -180,11 +180,6 @@ class SlotMLPAdditive(torch.nn.Module):
         with torch.no_grad():
             if z_sampled is None:
                 z_sampled, indices = sample_z_from_latents(hat_z.detach())
-            # z_sampled, indices = sample_z_from_latents(hat_z.detach())
-            # figures_sampled = figures.reshape(
-            #     -1, figures.shape[2], figures.shape[3], figures.shape[4]
-            # )[indices].reshape(-1, *figures.shape[1:])
-            # x_sampled = torch.sum(figures_sampled, dim=1)
             x_sampled, figures_sampled = self.decoder(z_sampled)
             x_sampled = torch.clamp(x_sampled, 0, 1)
 

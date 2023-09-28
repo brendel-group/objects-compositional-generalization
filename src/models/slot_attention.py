@@ -1,18 +1,17 @@
 """
-Slot Attention-based auto-encoder for object discovery. Code provided by Jack Brady.
+Slot Attention-based auto-encoder for object discovery.
 """
 from contextlib import nullcontext
-from typing import Dict, Any
+from typing import Any, Dict
 
 import numpy as np
 import torch
 import torch.nn.functional as F
-from torch import nn
-
 from src.utils.training_utils import (
     sample_z_from_latents,
     sample_z_from_latents_no_overlap,
 )
+from torch import nn
 
 
 class SlotAttentionAutoEncoder(nn.Module):

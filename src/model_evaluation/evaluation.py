@@ -242,7 +242,6 @@ def _internal_evaluate_model(
         lr_scheduler_offdiagonal = None
 
     if provided_models is None:
-        print("NO MODELS PROVIDED !!!")
         train.train_models(
             z_pred_train,
             z_train,
@@ -386,7 +385,6 @@ def evaluate_model(
         raise RuntimeError("z and z_pred must be on the same device.")
 
     def _evaluate_model(y, provided_models=provided_models):
-        print(f"Provided models: {bool(provided_models)}")
         return _internal_evaluate_model(
             z,
             y,
@@ -406,11 +404,9 @@ def evaluate_model(
             provided_models=provided_models,
         )
 
-    if verbose > 0:
-        print("Evaluating ceiling performance.")
-    ceiling_r2_scores, ceiling_accuracies, output_models_ceiling = _evaluate_model(z, provided_models=None)
-    if verbose > 0:
-        print("Evaluating model performance.")
+    ceiling_r2_scores, ceiling_accuracies, output_models_ceiling = _evaluate_model(
+        z, provided_models=None
+    )
     r2_scores, accuracies, output_models_normal = _evaluate_model(z_pred)
 
     continuous_performance = compute_relative_performance(r2_scores, ceiling_r2_scores)

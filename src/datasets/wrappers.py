@@ -1,15 +1,14 @@
 import os
 
 import torch
-from torchvision import transforms as transforms
-
 from src.datasets import configs, data
 from src.datasets.utils import (
-    PreGeneratedDataset,
     MixedDataset,
-    dump_generated_dataset,
+    PreGeneratedDataset,
     collate_fn_normalizer,
+    dump_generated_dataset,
 )
+from torchvision import transforms as transforms
 
 
 class DataWrapper:
@@ -122,7 +121,9 @@ class SpritesWorldDataWrapper(DataWrapper):
             train_dataset,
             batch_size=batch_size,
             shuffle=True,
-            collate_fn=lambda b: collate_fn_normalizer(b, self.min_offset, self.scale, mixed=mixed),
+            collate_fn=lambda b: collate_fn_normalizer(
+                b, self.min_offset, self.scale, mixed=mixed
+            ),
         )
 
         return train_loader
@@ -173,7 +174,9 @@ class SpritesWorldDataWrapper(DataWrapper):
             test_dataset,
             batch_size=batch_size,
             shuffle=False,
-            collate_fn=lambda b: collate_fn_normalizer(b, self.min_offset, self.scale, mixed=mixed),
+            collate_fn=lambda b: collate_fn_normalizer(
+                b, self.min_offset, self.scale, mixed=mixed
+            ),
         )
 
         return test_loader
@@ -234,7 +237,7 @@ class KubricWrapper(DataWrapper):
                 f"Train dataset successfully loaded from {os.path.join(self.path, 'train', sample_mode_train)}."
             )
         else:
-            kubric_path = "/mnt/qb/work/bethge/apanfilov27/object_centric_consistency_project/kubric_raw_data"
+            kubric_path = "SOME_PATH"
 
             train_dataset = data.KubricImagesDataset(
                 os.path.join(kubric_path, "train", sample_mode_train)
@@ -276,7 +279,7 @@ class KubricWrapper(DataWrapper):
                 f"Test dataset successfully loaded from {os.path.join(self.path, 'test', sample_mode_test)}."
             )
         else:
-            kubric_path = "/mnt/qb/work/bethge/apanfilov27/object_centric_consistency_project/kubric_raw_data"
+            kubric_path = "SOME_PATH"
 
             test_dataset = data.KubricImagesDataset(
                 os.path.join(kubric_path, "test", sample_mode_test)

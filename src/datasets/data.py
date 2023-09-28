@@ -2,16 +2,14 @@ import os
 import warnings
 from typing import Callable, Optional
 
-from torchvision import transforms
-
 import numpy as np
 import torch
 import tqdm
 from PIL import Image
 from spriteworld import environment, renderers, sprite, tasks
-
-from src.datasets.configs import Config, SpriteWorldConfig, KubricConfig
+from src.datasets.configs import Config, KubricConfig, SpriteWorldConfig
 from src.utils import sampling_utils
+from torchvision import transforms
 
 warnings.filterwarnings("ignore", module="spriteworld")
 
@@ -36,10 +34,6 @@ def sample_latents(
         z = sampling_utils.sample_diagonal(
             cfg, n_samples, n_slots, n_latents, delta, mode="off_diagonal"
         )
-    elif sample_mode == "pure_off_diagonal":
-        z = sampling_utils.sample_diagonal(
-            cfg, n_samples, n_slots, n_latents, delta, mode="pure_off_diagonal"
-        )
     else:
         raise ValueError(f"Sample mode {sample_mode} not supported.")
     return z
@@ -53,10 +47,10 @@ class SpriteWorldDataset(torch.utils.data.TensorDataset):
         n_samples: Number of samples to generate.
         n_slots: Number of objects in scene. For n_slots=1, always 'random' sampling is used.
         cfg: Instance of SpriteWorldConfig class, determines the range of values for each latent variable.
-        sample_mode: Sampling mode for latent variables ("random", "diagonal", "off_diagonal", "pure_off_diagonal").
+        sample_mode: Sampling mode for latent variables ("random", "diagonal", "off_diagonal").
         img_h: Height of the generated images.
         img_w: Width of the generated images.
-        delta: Delta for "diagonal", "off_diagonal" and "pure_off_diagonal" sampling. Should be in (0, 1].
+        delta: Delta for "diagonal", "off_diagonal" and sampling. Should be in (0, 1].
         no_overlap: Whether to allow overlapping of sprites.
             For sample_mode=="diagonal" and "off_diagonal" provided delta decreased to the range where it is possible
             to have no overlapping figures.
@@ -143,12 +137,18 @@ class SpriteWorldDataset(torch.utils.data.TensorDataset):
     def __generate(self):
         """Generates a list of sprites from generated latents for the environment."""
 
-        if self.sample_mode in ["diagonal", "off_diagonal", "pure_off_diagonal"] and not self.ignore_adjusment:
+        if (
+            self.sample_mode in ["diagonal", "off_diagonal", "pure_off_diagonal"]
+            and not self.ignore_adjusment
+        ):
             # adjusting x to avoid overlapping sprites
             x_scaled = self.__adjust_x_coord(self.z[self.__generate_ind, :, :2])
             self.z[self.__generate_ind, :, 0] = x_scaled
 
-        if self.sample_mode in ["off_diagonal", "pure_off_diagonal"] and not self.ignore_adjusment:
+        if (
+            self.sample_mode in ["off_diagonal", "pure_off_diagonal"]
+            and not self.ignore_adjusment
+        ):
             # removing same shapes (this artifact comes from "floor" rounding)
             shape = self.__adjust_shape(self.z[self.__generate_ind, :, 2])
             self.z[self.__generate_ind, :, 2] = shape
@@ -224,7 +224,7 @@ class SpriteWorldDataset(torch.utils.data.TensorDataset):
                 x_diag += ort_vec
 
             elif self.sample_mode == "off_diagonal":
-               x_diag = generated_x_y[:, 0]
+                x_diag = generated_x_y[:, 0]
 
             if self.no_overlap:
                 k = 1 / self.n_slots

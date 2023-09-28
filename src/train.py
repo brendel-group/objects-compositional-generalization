@@ -1,24 +1,17 @@
 import os.path
 import time
+from contextlib import nullcontext
 
-import torch
-import torch.utils.data
-
-# import wandb
-
+import src.datasets.utils as data_utils
 import src.datasets.wrappers
 import src.metrics as metrics
 import src.models
-import src.datasets.utils as data_utils
 import src.utils.training_utils as training_utils
 import src.utils.wandb_utils as wandb_utils
-
-from contextlib import nullcontext
+import torch
+import torch.utils.data
 
 from .models import base_models, slot_attention
-
-# # TODO: remove this
-# wandb.login(key="b17ca470c2ce70dd9d6c3ce01c6fc7656633fe91")
 
 
 def one_epoch(
@@ -110,8 +103,6 @@ def one_epoch(
             true_masks = true_masks.detach().permute(1, 0, 2, 3, 4)
             accum_ari_score += ari_score.item() * accum_adjustment
 
-        if model.model_name in ["monet", "genesis"]:
-            reconstruction_loss = model_loss
         # add to total loss
         total_loss += reconstruction_loss * reconstruction_term_weight
 
@@ -184,9 +175,6 @@ def one_epoch(
             total_loss.backward()
             optimizer.step()
 
-    if model.model_name in ["monet", "genesis"]:
-        accum_total_loss -= accum_model_loss
-        accum_total_loss += accum_model_loss * dataloader.batch_size
     # logging utils
     training_utils.print_metrics_to_console(
         epoch,
@@ -250,20 +238,6 @@ def run(
     data_path = os.path.join(data_utils.data_path, dataset_name)
 
     signature_args = locals().copy()
-    # wandb_config = signature_args
-    # wandb.init(
-    #     config=wandb_config,
-    #     project="object_centric_ood",
-    #     dir=os.path.join(data_utils.data_path, "wandb"),
-    # )
-
-    # for mode in ["ID", "OOD", "RDM"]:
-    #     wandb.define_metric(f"test_{mode} reconstruction loss", summary="min")
-    # wandb.define_metric("ID_score_ID", summary="max")
-    # wandb.define_metric("ID_score_OOD", summary="max")
-    # for mode in ["ID", "OOD", "RDM"]:
-    #     wandb.define_metric(f"test_{mode} ari score", summary="max")
-    # wandb_utils.wandb_log_code(wandb.run)
 
     time_created = time.strftime("%Y-%m-%d_%H-%M-%S", time.localtime())
     training_utils.set_seed(seed)
@@ -284,9 +258,6 @@ def run(
         sample_mode_test=sample_mode_test_ood, **signature_args
     )
     train_loader = wrapper.get_train_loader(**signature_args)
-
-    min_reconstruction_loss_ID = float("inf")
-    min_reconstruction_loss_OOD = float("inf")
 
     in_channels = 3
     if dataset_name == "dsprites":
@@ -329,13 +300,9 @@ def run(
             hid_dim=n_slot_latents,
             dataset_name=dataset_name,
             no_overlap=no_overlap,
-            sampling=True, # change to False for the fixed model
-            softmax=True, # change to False for the fixed model
+            sampling=True,  # change to False for the fixed model
+            softmax=True,  # change to False for the fixed model
         ).to(device)
-    elif model_name == "MONet":
-        model = src.models.get_monet_model(n_slots, n_slot_latents, device)
-    elif model_name == "GENESIS":
-        model = src.models.get_genesis_model(n_slots, n_slot_latents, device)
 
     # wandb.watch(model)
 
@@ -382,10 +349,7 @@ def run(
         print("Learning rate: ", optimizer.param_groups[0]["lr"])
 
         if epoch % 1 == 0:
-            if (
-                model_name in ["SlotAttention", "SlotMLPAdditive", "MONet", "GENESIS"]
-                and epoch % 1 == 0
-            ):
+            if model_name in ["SlotAttention", "SlotMLPAdditive"] and epoch % 1 == 0:
                 if dataset_name == "dsprites":
                     categorical_dimensions = [2]
                 elif dataset_name == "kubric":
@@ -398,13 +362,6 @@ def run(
                     categorical_dimensions,
                     device,
                 )
-                # wandb.log(
-                #     {
-                #         "ID_score_ID": id_score_id,
-                #         "ID_score_OOD": id_score_ood,
-                #     },
-                #     step=epoch,
-                # )
 
             id_rec_loss = one_epoch(
                 model,
@@ -424,7 +381,7 @@ def run(
                 **signature_args,
             )
 
-            checkpoint_save_path = data_utils.data_path # change this to your path
+            checkpoint_save_path = data_utils.data_path  # change this to your path
             training_utils.save_checkpoint(
                 path=checkpoint_save_path,
                 **locals(),

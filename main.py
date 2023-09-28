@@ -12,7 +12,10 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--model_name",
-        choices=["SlotMLPAdditive", "SlotAttention", "MONet", "GENESIS", "SlotMLPMonolithic"],
+        choices=[
+            "SlotMLPAdditive",
+            "SlotAttention",
+        ],
         default="SlotAttention",
         help="Model to use. One of the models defined in base_models.py.",
     )
@@ -155,10 +158,8 @@ if __name__ == "__main__":
     )
 
     args = parser.parse_args()
-    # args.load_checkpoint = f"/mnt/qb/work/bethge/apanfilov27/object_centric_consistency_project/checkpoints/SlotAttention_MIXEDobj_deccons_400_{args.seed}.pt"
-    # args.load_checkpoint = f"/mnt/qb/work/bethge/apanfilov27/object_centric_consistency_project/checkpoints/SlotAttention_3obj_overlaps_enccons_{args.seed}_checkpoint.pt"
 
     print(args)
 
-    args.save_name = f"temp" # < -- change this to specify the name of the model
+    args.save_name = f"temp"  # < -- change this to specify the name of the model
     train.run(**vars(args))

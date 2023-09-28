@@ -7,8 +7,8 @@ import os
 import torch
 import tqdm
 
-data_path = "/mnt/qb/work/bethge/apanfilov27/object_centric_consistency_project"
-code_path = "/mnt/qb/work/bethge/apanfilov27/code/object_centric_ood"
+data_path = "SET THIS TO YOUR DATA PATH"
+code_path = "SET THIS TO YOUR DATA PATH"  # not nessesary
 
 
 def dump_generated_dataset(dataset: torch.utils.data.TensorDataset, path: str):
@@ -50,6 +50,7 @@ class PreGeneratedDataset(torch.utils.data.Dataset):
 
 class MixedDataset(torch.utils.data.Dataset):
     """Loads pre-generated mixed SpriteWorldDataset from a directory."""
+
     def __init__(self, path: str, n_samples: int = None):
         self.path = path
         self.n_samples = n_samples
@@ -103,7 +104,7 @@ class MixedDataset(torch.utils.data.Dataset):
             zeros = torch.zeros(latent_tensor.shape[0], 4, latent_tensor.shape[2])
 
             # Fill in the parts of the zeros tensor with the loaded tensor
-            zeros[:, :latent_tensor.shape[1], :] = latent_tensor
+            zeros[:, : latent_tensor.shape[1], :] = latent_tensor
 
             # Add the tensor to the list
             latent_tensors.append(zeros)

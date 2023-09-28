@@ -1,12 +1,11 @@
-from typing import Tuple, List
+from typing import List, Tuple
 
 import numpy as np
 import torch
 from scipy.optimize import linear_sum_assignment
 from sklearn.metrics import adjusted_rand_score
-from torchmetrics import R2Score
-
 from src.model_evaluation import evaluate_model
+from torchmetrics import R2Score
 
 
 def r2_score(
@@ -193,7 +192,6 @@ def identifiability_score(
     z_true_ood = torch.cat(z_true_ood, dim=0)
     z_pred_ood = torch.cat(z_pred_ood, dim=0)
 
-
     # calculate identifiability score
     identifiability_score_id = evaluate_model(
         z_true_id,
@@ -214,16 +212,6 @@ def identifiability_score(
         (ceiling_r2_scores_id, ceiling_accuracies_id),
         models_id,
     ) = identifiability_score_id
-    print("ID performance:")
-    print(
-        f"{performance_id=}",
-        f"\n{continuous_performance_id=}",
-        f"\n{categorical_performance_id=}",
-        f"\n{r2_scores_id=}",
-        f"\n{accuracies_id=}",
-        f"\n{ceiling_r2_scores_id=}",
-        f"\n{ceiling_accuracies_id=}",
-    )
 
     identifiability_score_ood = evaluate_model(
         z_true_ood,
@@ -238,25 +226,15 @@ def identifiability_score(
         provided_models=models_id,
     )
 
-    print("\nOOD performance:")
     (
         performance_ood,
         continuous_performance_ood,
         categorical_performance_ood,
         (r2_scores_ood, accuracies_ood),
         (ceiling_r2_scores_ood, ceiling_accuracies_ood),
-        _
+        _,
     ) = identifiability_score_ood
 
-    print(
-        f"{performance_ood=}",
-        f"\n{continuous_performance_ood=}",
-        f"\n{categorical_performance_ood=}",
-        f"\n{r2_scores_ood=}",
-        f"\n{accuracies_ood=}",
-        f"\n{ceiling_r2_scores_ood=}",
-        f"\n{ceiling_accuracies_ood=}",
-    )
     id_score_id = r2_scores_id[0] * (
         z_true_id.shape[-1] - len(categorical_dimensions)
     ) + accuracies_id[0] * len(categorical_dimensions)
