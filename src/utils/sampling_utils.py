@@ -1,3 +1,8 @@
+"""
+Main sampling functions for dataset generation.
+Note that delta_in_code = delta_in_paper * 2. 
+
+"""
 import numpy as np
 import torch
 from src.datasets.configs import Config
@@ -7,7 +12,7 @@ def sample_random(
     cfg: Config, n_samples: int, n_slots: int, n_latents: int
 ) -> torch.Tensor:
     """
-    Sample randomly in complete latent space.
+    Sample randomly from the whole latent space.
 
     Args:
         cfg: Config object.
@@ -48,7 +53,7 @@ def sample_delta_off_diagonal_cube(
 ) -> torch.Tensor:
     """
     All distances from the diagonal are bigger than delta.
-    Opposite case of __sample_delta_diagonal_cube.
+    The opposite case of __sample_delta_diagonal_cube.
 
     Rejection sampling used as the algorithm.
     """
@@ -138,7 +143,7 @@ def sample_diagonal(
     mode: str,
 ) -> torch.Tensor:
     """
-    Sample near the diagonal in latent space.
+    Sample around the diagonal of the hypercube.
 
     Args:
         cfg: Config object.

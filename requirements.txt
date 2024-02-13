@@ -17,3 +17,4 @@ Pillow==9.5.0
 dm-env
 hydra-core
 spiteworld
+git+https://github.com/kotekjedi/spriteworld_legacy.git

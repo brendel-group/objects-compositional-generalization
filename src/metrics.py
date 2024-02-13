@@ -1,3 +1,6 @@
+"""
+Metrics for evaluating models.
+"""
 from typing import List, Tuple
 
 import numpy as np
@@ -41,7 +44,18 @@ def r2_score(
     return avg_r2_score, r2_score_raw
 
 
-def image_r2_score(true_images: torch.Tensor, predicted_images: torch.Tensor):
+def image_r2_score(true_images: torch.Tensor, predicted_images: torch.Tensor) -> float:
+    """
+    Calculates R2 score for images. Used for image reconstruction evaluation.
+
+    Args:
+        true_images: tensor of shape (batch_size, n_channels, height, width)
+        predicted_images: tensor of shape (batch_size, n_channels, height, width)
+
+    Returns:
+        reconstruction_error: R2 score
+    """
+
     r2_vw = R2Score(
         num_outputs=np.prod(true_images.shape[1:]), multioutput="variance_weighted"
     ).to(true_images.device)
@@ -63,7 +77,7 @@ def hungarian_slots_loss(
     device: str = "cpu",
     p: int = 2,
     reduction: str = "mean",
-):
+) -> Tuple[torch.Tensor, torch.Tensor]:
     """
     Computes pairwise distance between slots, matches slots with Hungarian algorithm and outputs
     sum of distances ^ p.
@@ -114,7 +128,17 @@ def hungarian_slots_loss(
     return loss, inverse_indices
 
 
-def reconstruction_loss(target, prediction, reduction="mean"):
+def reconstruction_loss(
+    target: torch.Tensor, prediction: torch.Tensor, reduction: str = "mean"
+) -> torch.Tensor:
+    """
+    Computes the reconstruction loss.
+
+    Args:
+        target: tensor of shape [batch_size, *]
+        prediction: tensor of shape [batch_size, *]
+        reduction: "mean" or "sum"
+    """
     loss = (target - prediction).square()
 
     if reduction == "mean":
@@ -129,13 +153,14 @@ def ari(
     true_mask: torch.Tensor,
     pred_mask: torch.Tensor,
     num_ignored_objects: int = 1,
-) -> torch.FloatTensor:
+) -> torch.Tensor:
     """Computes the ARI score.
 
     Args:
         true_mask: tensor of shape [batch_size, n_objects, *] where values go from 0 to the number of objects.
         pred_mask:  tensor of shape [batch_size, n_objects, *] where values go from 0 to the number of objects.
         num_ignored_objects: number of objects (in ground-truth mask) to be ignored when computing ARI.
+        (Usually 1 for background.)
 
     Returns:
         a vector of ARI scores, of shape [batch_size, ].
@@ -164,7 +189,27 @@ def identifiability_score(
     test_ood_loader: torch.utils.data.DataLoader,
     categorical_dimensions: List[int],
     device: str = "cpu",
-):
+) -> Tuple[float, float]:
+    """
+    Computes identifiability score.
+    First fits a model on the ID latents and then evaluates it on the OOD latents.
+    For more details see: https://arxiv.org/abs/2305.14229
+
+    Brady, Jack, et al. "Provably Learning Object-Centric Representations."
+    arXiv preprint arXiv:2305.14229 (2023).
+
+    Args:
+        model: model to evaluate
+        test_id_loader: dataloader for ID test set
+        test_ood_loader: dataloader for OOD test set
+        categorical_dimensions: list of categorical dimensions
+        device: device to run on
+
+    Returns:
+        id_score_id: identifiability score for ID test set
+        id_score_ood: identifiability score for OOD test set
+    """
+
     # collect test set latents and predicted latents
     z_true_id = []
     z_pred_id = []
@@ -245,5 +290,4 @@ def identifiability_score(
     ) + accuracies_ood[0] * len(categorical_dimensions)
     id_score_ood /= z_true_ood.shape[-1]
 
-    print(f"{id_score_id=}", f"{id_score_ood=}")
     return id_score_id, id_score_ood

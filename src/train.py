@@ -1,5 +1,4 @@
 import os.path
-import time
 from contextlib import nullcontext
 
 import src.datasets.utils as data_utils
@@ -7,7 +6,6 @@ import src.datasets.wrappers
 import src.metrics as metrics
 import src.models
 import src.utils.training_utils as training_utils
-import src.utils.wandb_utils as wandb_utils
 import torch
 import torch.utils.data
 
@@ -33,7 +31,7 @@ def one_epoch(
     **kwargs,
 ):
     """One epoch of training or testing. Please check main.py for keyword parameters descriptions'."""
-    print(f"Number of samples: {len(dataloader.dataset)}")
+
     if mode == "train":
         model.train()
     elif mode in ["test_ID", "test_OOD", "test_RDM"]:
@@ -186,15 +184,6 @@ def one_epoch(
         accum_consistency_encoder_loss,
         accum_consistency_decoder_loss,
     )
-    # if epoch % freq == 0:
-    #     print(f"ARI score: {accum_ari_score:.4f}")
-    #     wandb_utils.wandb_log(
-    #         data_path,
-    #         kwargs["dataset_name"],
-    #         **output_dict,
-    #         **locals(),
-    #     )
-
     return accum_reconstruction_loss
 
 
@@ -226,11 +215,9 @@ def run(
     sample_mode_train,
     sample_mode_test_id,
     sample_mode_test_ood,
-    delta,
     seed,
     load_checkpoint,
     save_name,
-    test_freq=20,
 ):
     """
     Run the training and testing. Currently only supports SpritesWorld dataset.
@@ -238,10 +225,8 @@ def run(
     """
     global data_path
     data_path = os.path.join(data_utils.data_path, dataset_name)
-
     signature_args = locals().copy()
 
-    time_created = time.strftime("%Y-%m-%d_%H-%M-%S", time.localtime())
     training_utils.set_seed(seed)
 
     ##### Loading Data #####
@@ -265,9 +250,6 @@ def run(
     if dataset_name == "dsprites":
         resolution = (64, 64)
         ch_dim = 32  # originally 32
-    elif dataset_name == "kubric":
-        resolution = (128, 128)
-        ch_dim = 64  # originally 64
 
     if model_name == "SlotMLPAdditive":
         model = base_models.SlotMLPAdditive(
@@ -305,8 +287,6 @@ def run(
             sampling=sampling,  # change to False for the "fixed" model
             softmax=softmax,  # change to False for the "fixed" model
         ).to(device)
-
-    # wandb.watch(model)
 
     # warmup
     optimizer = torch.optim.AdamW(model.parameters(), lr=1e-7, weight_decay=0.001)
@@ -354,8 +334,6 @@ def run(
             if model_name in ["SlotAttention", "SlotMLPAdditive"] and epoch % 1 == 0:
                 if dataset_name == "dsprites":
                     categorical_dimensions = [2]
-                elif dataset_name == "kubric":
-                    categorical_dimensions = [5]
 
                 id_score_id, id_score_ood = metrics.identifiability_score(
                     model,

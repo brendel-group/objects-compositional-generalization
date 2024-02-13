@@ -3,89 +3,8 @@ import os
 import numpy as np
 import torch
 
-from src.metrics import hungarian_slots_loss
 
-
-def sample_z_from_latents_no_overlap(
-    gt_z, hat_z, gt_figures, hat_figures, device, n_samples=64
-):
-    _, transposed_indices = hungarian_slots_loss(
-        gt_figures.view(gt_figures.shape[0], gt_figures.shape[1], -1),
-        hat_figures.view(hat_figures.shape[0], hat_figures.shape[1], -1),
-        device=device,
-    )
-
-    transposed_indices = transposed_indices.to(device)
-
-    hat_z_permuted = hat_z.gather(
-        1,
-        transposed_indices[:, :, 1].unsqueeze(-1).expand(-1, -1, hat_z.shape[-1]),
-    )
-    gt_z_flatten = gt_z.view(-1, gt_z.shape[2])
-    z_sampled, indices = sample_z_from_latents(hat_z_permuted.detach(), n_samples=1024)
-
-    # reshape z_flatten with indices
-    z_flatten = gt_z_flatten[indices].reshape(-1, gt_z.shape[1], gt_z.shape[2])
-
-    z_flatten_sampled, selected_pairs_indices = filter_objects(
-        z_flatten, max_objects=n_samples
-    )
-    z_sampled = z_sampled[selected_pairs_indices]
-    return z_sampled
-
-
-def filter_objects(latents, max_objects=5000, threshold=0.2, sort=False):
-    """
-    Filter objects based on their Euclidean distance.
-    Args:
-        latents: Tensor of shape (batch_size, n_slots, n_latents)
-        max_objects: Number of objects to keep at most
-        threshold: Distance threshold
-        sort: Whether to sort the objects by distance
-    """
-    N, slots, _ = latents.size()
-    mask = torch.zeros(N, dtype=bool)
-
-    # Compute Euclidean distance for each pair of slots in each item
-    for n in range(N):
-        slots_distances = torch.cdist(latents[n, :, :2], latents[n, :, :2], p=2)
-        slots_distances.fill_diagonal_(float('inf'))  # Ignore distance to self
-
-        # Consider an object as "close" if its minimal distance to any other object is below the threshold
-        min_distance = slots_distances.min().item()
-        if min_distance >= threshold:
-            mask[n] = True
-
-    # If all objects are "close", print a message and return
-    if not torch.any(mask):
-        print("No objects were found that meet the distance threshold.")
-        return None, []
-
-    # Apply the mask to the latents
-    filtered_objects = latents[mask]
-    filtered_indices = torch.arange(N)[mask]
-
-    # If the number of filtered objects exceeds the maximum, truncate them
-    if filtered_objects.size(0) > max_objects:
-        filtered_objects = filtered_objects[:max_objects]
-        filtered_indices = filtered_indices[:max_objects]
-
-    if sort:
-        # Sort the filtered objects by minimum distance to any other object
-        min_distances = torch.zeros(mask.sum().item())
-        for i, n in enumerate(torch.where(mask)[0]):
-            slots_distances = torch.cdist(latents[n], latents[n], p=2)
-            slots_distances.fill_diagonal_(float('inf'))
-            min_distances[i] = slots_distances.min().item()
-
-        indices = torch.argsort(min_distances)
-        filtered_objects = filtered_objects[indices]
-        filtered_indices = filtered_indices[indices]
-
-    return filtered_objects, filtered_indices.tolist()
-
-
-def sample_z_from_latents(latents, n_samples=64):
+def sample_z_from_latents(latents: torch.Tensor, n_samples: int = 64):
     """
     Sample "delusional" z samples from latents.
 
@@ -117,7 +36,7 @@ def sample_z_from_latents(latents, n_samples=64):
     return sampled_z.to(latents.device), indices
 
 
-def get_masks(x, figures, threshold=0.1):
+def get_masks(x: torch.Tensor, figures: torch.Tensor, threshold: float = 0.1):
     """
     Get the masks of the objects in the images, given the original image and per-object images.
     Args:
@@ -180,7 +99,7 @@ def get_masks(x, figures, threshold=0.1):
     return masks
 
 
-def set_seed(seed):
+def set_seed(seed: int) -> None:
     """Set seed for reproducibility."""
     torch.manual_seed(seed)
     torch.cuda.manual_seed(seed)
@@ -188,6 +107,56 @@ def set_seed(seed):
 
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
+
+
+def save_checkpoint(
+    model: torch.nn.Module,
+    optimizer: torch.optim.Optimizer,
+    scheduler: torch.optim.lr_scheduler._LRScheduler,
+    model_name: str,
+    epoch: int,
+    time_created: str,
+    checkpoint_name: str,
+    path: str,
+    **kwargs,
+) -> None:
+    """
+    Saves a checkpoint of the model, optimizer, and scheduler states to disk.
+    """
+
+    checkpoint = {
+        "epoch": epoch,
+        "model_state_dict": model.state_dict(),
+        "optimizer_state_dict": optimizer.state_dict(),
+        "scheduler_state_dict": scheduler.state_dict(),
+    }
+    torch.save(
+        checkpoint,
+        os.path.join(
+            path,
+            "checkpoints",
+            f"{model_name}_{time_created}_{checkpoint_name}_checkpoint.pt",
+        ),
+    )
+
+
+def load_checkpoint(
+    model: torch.nn.Module,
+    optimizer: torch.optim.Optimizer,
+    scheduler: torch.optim.lr_scheduler._LRScheduler,
+    checkpoint_path: str,
+) -> Tuple[
+    torch.nn.Module, torch.optim.Optimizer, torch.optim.lr_scheduler._LRScheduler, int
+]:
+    """
+    Loads a checkpoint into the model, optimizer, and scheduler from a given file path.
+    """
+    checkpoint = torch.load(checkpoint_path)
+    model.load_state_dict(checkpoint["model_state_dict"])
+    optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
+    scheduler.load_state_dict(checkpoint["scheduler_state_dict"])
+    epoch = checkpoint["epoch"]
+    return model, optimizer, scheduler, epoch
 
 
 def print_metrics_to_console(
@@ -204,14 +173,14 @@ def print_metrics_to_console(
     Prints the metrics to console in a tabular format.
 
     Args:
-    epoch: The current epoch.
-    accum_total_loss: The accumulated total loss.
-    accum_reconstruction_loss: The accumulated reconstruction loss.
-    accum_consistency_loss: The accumulated consistency loss.
-    accum_r2_score: The accumulated R2 score.
-    accum_slots_loss: The accumulated slots loss.
-    accum_encoder_consistency_loss: The accumulated encoder consistency loss.
-    accum_decoder_consistency_loss: The accumulated decoder consistency loss.
+        epoch: The current epoch.
+        accum_total_loss: The accumulated total loss.
+        accum_reconstruction_loss: The accumulated reconstruction loss.
+        accum_consistency_loss: The accumulated consistency loss.
+        accum_r2_score: The accumulated R2 score.
+        accum_slots_loss: The accumulated slots loss.
+        accum_encoder_consistency_loss: The accumulated encoder consistency loss.
+        accum_decoder_consistency_loss: The accumulated decoder consistency loss.
     """
     print(f"{'=' * 130}")
     print(
@@ -233,39 +202,3 @@ def print_metrics_to_console(
         )
     )
     print(f"{'=' * 130}")
-
-
-def save_checkpoint(
-    model,
-    optimizer,
-    scheduler,
-    model_name,
-    epoch,
-    time_created,
-    checkpoint_name,
-    path,
-    **kwargs,
-):
-    checkpoint = {
-        "epoch": epoch,
-        "model_state_dict": model.state_dict(),
-        "optimizer_state_dict": optimizer.state_dict(),
-        "scheduler_state_dict": scheduler.state_dict(),
-    }
-    torch.save(
-        checkpoint,
-        os.path.join(
-            path,
-            "checkpoints",
-            f"{model_name}_{time_created}_{checkpoint_name}_checkpoint.pt",
-        ),
-    )
-
-
-def load_checkpoint(model, optimizer, scheduler, checkpoint_path):
-    checkpoint = torch.load(checkpoint_path)
-    model.load_state_dict(checkpoint["model_state_dict"])
-    optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
-    scheduler.load_state_dict(checkpoint["scheduler_state_dict"])
-    epoch = checkpoint["epoch"]
-    return model, optimizer, scheduler, epoch
