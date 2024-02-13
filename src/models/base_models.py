@@ -2,10 +2,7 @@ from contextlib import nullcontext
 from typing import Any, Dict
 
 import torch
-from src.utils.training_utils import (
-    sample_z_from_latents,
-    sample_z_from_latents_no_overlap,
-)
+from src.utils.training_utils import sample_z_from_latents
 
 from . import utils
 
@@ -22,22 +19,6 @@ class SlotEncoder(torch.nn.Module):
     def forward(self, x):
         x = self.encoder(x)
         out = x.view(-1, self.n_slots, self.n_slot_latents)
-        return out
-
-
-class TwinHeadedSlotEncoder(torch.nn.Module):
-    def __init__(self, in_channels, n_slots, n_slot_latents):
-        super(TwinHeadedSlotEncoder, self).__init__()
-        self.n_slots = n_slots
-        self.n_slot_latents = n_slot_latents
-        self.encoder_shared, self.encoder_separate = utils.get_twin_head_encoder(
-            in_channels, n_slots, n_slot_latents
-        )
-
-    def forward(self, x):
-        x = self.encoder_shared(x)
-        out = torch.stack([encoder(x) for encoder in self.encoder_separate], dim=1)
-        out = out.view(-1, self.n_slots, self.n_slot_latents)
         return out
 
 
@@ -148,21 +129,14 @@ class SlotMLPAdditive(torch.nn.Module):
         in_channels: int,
         n_slots: int,
         n_slot_latents: int,
-        twin_headed: bool = False,
         no_overlap: bool = False,
         dataset_name: str = "dsprites",
     ) -> None:
         super(SlotMLPAdditive, self).__init__()
         self.n_slots = n_slots
         self.n_slot_latents = n_slot_latents
-        self.twin_headed = twin_headed
         self.no_overlap = no_overlap
-        if twin_headed:
-            self.encoder = TwinHeadedSlotEncoder(in_channels, n_slots, n_slot_latents)
-        else:
-            self.encoder = SlotEncoder(
-                in_channels, n_slots, n_slot_latents, dataset_name
-            )
+        self.encoder = SlotEncoder(in_channels, n_slots, n_slot_latents, dataset_name)
         self.decoder = SlotMLPAdditiveDecoder(
             in_channels, n_slots, n_slot_latents, dataset_name
         )
@@ -171,9 +145,7 @@ class SlotMLPAdditive(torch.nn.Module):
     def consistency_pass(
         self,
         hat_z,
-        figures,
         use_consistency_loss,
-        extended_consistency_loss,
         z_sampled=None,
     ):
         # getting imaginary samples
@@ -184,13 +156,11 @@ class SlotMLPAdditive(torch.nn.Module):
             x_sampled = torch.clamp(x_sampled, 0, 1)
 
         # encoder pass
-        with nullcontext() if (
-            use_consistency_loss or extended_consistency_loss
-        ) else torch.no_grad():
+        with nullcontext() if (use_consistency_loss) else torch.no_grad():
             hat_z_sampled = self.encoder(x_sampled)
 
-        # decoder pass
-        with nullcontext() if extended_consistency_loss else torch.no_grad():
+        # second decoder pass - for debugging purposes
+        with torch.no_grad():
             hat_x_sampled, _ = self.decoder(hat_z_sampled)
 
         return {
@@ -205,7 +175,6 @@ class SlotMLPAdditive(torch.nn.Module):
         self,
         x,
         use_consistency_loss=False,
-        extended_consistency_loss=False,
         true_latents=None,
         true_figures=None,
         not_ignore_consistency=True,
@@ -219,7 +188,6 @@ class SlotMLPAdditive(torch.nn.Module):
         Args:
             x: input image, of shape (batch_size, in_channels, height, width)
             use_consistency_loss: whether to use consistency loss
-            extended_consistency_loss: whether to use extended consistency loss
             true_latents: true latents for input image
             true_figures: true figures for input image
             not_ignore_consistency: whether to ignore consistency loss
@@ -262,7 +230,6 @@ class SlotMLPAdditive(torch.nn.Module):
                 hat_z,
                 figures,
                 use_consistency_loss,
-                extended_consistency_loss,
                 z_sampled=z_sampled,
             )
         else:
@@ -284,18 +251,11 @@ class SlotMLPEncoder(torch.nn.Module):
         n_slots: int,
         n_slot_latents: int,
         dataset_name: str,
-        twin_headed: bool = False,
     ) -> None:
         super(SlotMLPEncoder, self).__init__()
         self.n_slots = n_slots
         self.n_slot_latents = n_slot_latents
-        self.twin_headed = twin_headed
-        if twin_headed:
-            self.encoder = TwinHeadedSlotEncoder(in_channels, n_slots, n_slot_latents)
-        else:
-            self.encoder = SlotEncoder(
-                in_channels, n_slots, n_slot_latents, dataset_name
-            )
+        self.encoder = SlotEncoder(in_channels, n_slots, n_slot_latents, dataset_name)
         self.model_name = "SlotMLPEncoder"
 
     def forward(self, x):

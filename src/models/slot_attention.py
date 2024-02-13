@@ -1,5 +1,6 @@
 """
-Slot Attention-based auto-encoder for object discovery.
+Slot Attention-based autoencoder; implementation is adapted from 
+https://github.com/addtt/object-centric-library.
 """
 from contextlib import nullcontext
 from typing import Any, Dict
@@ -7,10 +8,7 @@ from typing import Any, Dict
 import numpy as np
 import torch
 import torch.nn.functional as F
-from src.utils.training_utils import (
-    sample_z_from_latents,
-    sample_z_from_latents_no_overlap,
-)
+from src.utils.training_utils import sample_z_from_latents
 from torch import nn
 
 
@@ -23,22 +21,22 @@ class SlotAttentionAutoEncoder(nn.Module):
         num_iterations,
         hid_dim,
         dataset_name,
-        no_overlap=False,
         softmax=True,
         sampling=True,
     ):
-        """Builds the Slot Attention-based auto-encoder.
+        """
+        Builds the Slot Attention-based auto-encoder.
+
         Args:
-        num_slots: Number of slots in Slot Attention.
-        num_iterations: Number of iterations in Slot Attention.
-        hid_dim: Hidden dimension of Slot Attention.
+            num_slots: Number of slots in Slot Attention.
+            num_iterations: Number of iterations in Slot Attention.
+            hid_dim: Hidden dimension of Slot Attention.
         """
         super().__init__()
         self.model_name = "SlotAttention"
         self.hid_dim = hid_dim
         self.num_slots = num_slots
         self.num_iterations = num_iterations
-        self.no_overlap = no_overlap
 
         self.encoder_cnn = encoder
         self.decoder_cnn = decoder
@@ -55,10 +53,7 @@ class SlotAttentionAutoEncoder(nn.Module):
             use_sampling=sampling,
         )
 
-        if dataset_name == "dsprites":
-            self.spatial_broadcast = 64
-        elif dataset_name == "kubric":
-            self.spatial_broadcast = 8
+        self.spatial_broadcast = 64
 
         self.use_softmax = softmax
 
@@ -111,9 +106,6 @@ class SlotAttentionAutoEncoder(nn.Module):
         x,
         use_consistency_loss=False,
         extended_consistency_loss=False,
-        true_latents=None,
-        true_figures=None,
-        not_ignore_consistency=True,
     ) -> Dict[str, Any]:
         hat_z = self.encode(x)
         hat_x, figures, masks, reconstructions = self.decode(hat_z)
@@ -127,29 +119,12 @@ class SlotAttentionAutoEncoder(nn.Module):
         }
 
         # we always want to look at the consistency loss, but we not always want to backpropagate through consistency part
-        if (
-            true_latents is not None
-            and true_figures is not None
-            and use_consistency_loss
-            and self.no_overlap
-        ):
-            with torch.no_grad():
-                z_sampled = sample_z_from_latents_no_overlap(
-                    true_latents, hat_z, true_figures, figures, hat_z.device
-                )
-        else:
-            z_sampled = None
-
-        if not_ignore_consistency:
-            consistency_pass_dict = self.consistency_pass(
-                hat_z,
-                figures,
-                use_consistency_loss,
-                extended_consistency_loss,
-                z_sampled=z_sampled,
-            )
-        else:
-            consistency_pass_dict = {}
+        consistency_pass_dict = self.consistency_pass(
+            hat_z,
+            figures,
+            use_consistency_loss,
+            extended_consistency_loss,
+        )
 
         output_dict.update(consistency_pass_dict)
         return output_dict
@@ -157,23 +132,12 @@ class SlotAttentionAutoEncoder(nn.Module):
     def consistency_pass(
         self,
         hat_z,
-        figures,
         use_consistency_loss,
-        extended_consistency_loss,
-        z_sampled=None,
     ):
         # getting imaginary samples
         with torch.no_grad():
-            if z_sampled is None:
-                z_sampled, indices = sample_z_from_latents(hat_z.detach())
+            z_sampled, indices = sample_z_from_latents(hat_z.detach())
 
-            # z_sampled, indices = sample_z_from_latents(hat_z.detach())
-            # figures_sampled = figures.reshape(
-            #     -1, figures.shape[2], figures.shape[3], figures.shape[4]
-            # )[indices].reshape(
-            #     -1, *figures.shape[1:]
-            # )  # <- figures level sampling
-            # x_sampled = torch.sum(figures_sampled, dim=1).permute(0, 3, 1, 2)
             (
                 x_sampled,
                 figures_sampled,
@@ -183,13 +147,11 @@ class SlotAttentionAutoEncoder(nn.Module):
             x_sampled = x_sampled.clamp(0, 1)
 
         # encoder pass
-        with nullcontext() if (
-            use_consistency_loss or extended_consistency_loss
-        ) else torch.no_grad():
+        with nullcontext() if (use_consistency_loss) else torch.no_grad():
             hat_z_sampled = self.encode(x_sampled)
 
-        # decoder pass
-        with nullcontext() if extended_consistency_loss else torch.no_grad():
+        # second decoder pass - for debugging purposes
+        with torch.no_grad():
             hat_x_sampled, _, hat_sampled_masks, hat_raw_sampled_figures = self.decode(
                 hat_z_sampled
             )
@@ -329,47 +291,17 @@ class SlotAttentionDecoder(nn.Module):
     def __init__(self, ch_dim, hid_dim, resolution, dataset_name):
         super().__init__()
         self.dataset_name = dataset_name
-        if self.dataset_name == "dsprites":
-            self.decoder_initial_size = (64, 64)
 
-            self.conv_list = nn.ModuleList(
-                [nn.Conv2d(hid_dim, ch_dim, 5, padding=2), nn.ReLU()]
-            )
-            for i in range(2):
-                self.conv_list.append(nn.Conv2d(ch_dim, ch_dim, 5, padding=2))
-                self.conv_list.append(nn.ReLU())
+        self.decoder_initial_size = (64, 64)
 
-            self.conv_list.append(nn.Conv2d(ch_dim, 4, 3, padding=1))
+        self.conv_list = nn.ModuleList(
+            [nn.Conv2d(hid_dim, ch_dim, 5, padding=2), nn.ReLU()]
+        )
+        for i in range(2):
+            self.conv_list.append(nn.Conv2d(ch_dim, ch_dim, 5, padding=2))
+            self.conv_list.append(nn.ReLU())
 
-        elif self.dataset_name == "kubric":
-            self.decoder_initial_size = (8, 8)
-
-            self.conv_list = nn.ModuleList(
-                [
-                    nn.ConvTranspose2d(
-                        hid_dim, ch_dim, 5, padding=2, stride=2, output_padding=1
-                    ),
-                    nn.ReLU(),
-                ]
-            )
-            for i in range(3):
-                self.conv_list.append(
-                    nn.ConvTranspose2d(
-                        ch_dim, ch_dim, 5, padding=2, stride=2, output_padding=1
-                    )
-                )
-                self.conv_list.append(nn.ReLU())
-            self.conv_list.extend(
-                [
-                    nn.ConvTranspose2d(
-                        ch_dim, ch_dim, 5, padding=2, stride=1, output_padding=0
-                    ),
-                    nn.ReLU(),
-                    nn.ConvTranspose2d(
-                        ch_dim, 4, 3, padding=1, stride=1, output_padding=0
-                    ),
-                ],
-            )
+        self.conv_list.append(nn.Conv2d(ch_dim, 4, 3, padding=1))
 
         self.decoder_pos = SoftPositionEmbed(hid_dim, self.decoder_initial_size)
         self.resolution = resolution
