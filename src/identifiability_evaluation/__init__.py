@@ -12,4 +12,4 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from src.model_evaluation.evaluation import evaluate_model  # noqa: F401
+from src.identifiability_evaluation.evaluation import evaluate_model  # noqa: F401

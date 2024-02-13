@@ -1,6 +1,6 @@
+import argparse
 import os
 
-import numpy as np
 import src
 import src.metrics as metrics
 import torch
@@ -52,38 +52,6 @@ def load_model_and_hook(path, model_name, softmax=True, sampling=True):
     return model, decoder_hook
 
 
-def compositional_contrast(jac, slot_dim):
-    batch_size, obs_dim, z_dim = jac.shape[0], jac.shape[1], jac.shape[2]
-    num_slots = int(z_dim / slot_dim)
-    jac = jac.reshape(
-        batch_size * obs_dim, z_dim
-    )  # batch_size*obs_dim x num_slots*slot_dim
-    slot_rows = torch.stack(
-        torch.split(jac, slot_dim, dim=1)
-    )  # num_slots x batch_size*obs_dim x slot_dim
-    slot_norms = torch.norm(slot_rows, dim=2)  # num_slots x batch_size*obs_dim
-    slot_norms = slot_norms.view(num_slots, batch_size, obs_dim).permute(
-        1, 0, 2
-    )  # batch_size x num_slots x obs_dim
-    slot_norms += 1e-12
-    slot_norms_max = slot_norms.sum(1) / num_slots
-    slot_norms_norm = slot_norms / slot_norms_max.unsqueeze(1).repeat(1, num_slots, 1)
-    max_norm_all = torch.max(slot_norms_max, 1)[0]
-    weights = slot_norms_max / max_norm_all.unsqueeze(1).repeat(1, obs_dim)
-
-    comp_conts = 0
-    comp_conts_norm = 0
-    for i in range(num_slots):
-        for j in range(i, num_slots - 1):
-            comp_conts += slot_norms[:, i] * slot_norms[:, j + 1]
-            comp_conts_norm += slot_norms_norm[:, i] * slot_norms_norm[:, j + 1]
-    comp_cont = (comp_conts).sum(1).mean()
-    comp_cont_norm = (comp_conts_norm).sum(1).mean()
-    weight_comp_cont_norm = ((comp_conts_norm) * weights).sum(1)
-
-    return comp_cont, comp_cont_norm, weight_comp_cont_norm
-
-
 def cast_models_to_cuda(models):
     for model in models:
         model.cuda()
@@ -98,7 +66,7 @@ def calculate_contrast(out, decoder_hook):
     jac = jacfwd(decoder_hook)(latents)
     jac_right = jac[0].flatten(1, 4).flatten(2, 3)  # taking the reconstruction jacobian
 
-    (_, _, weighted_comp) = compositional_contrast(jac_right, 16)
+    (_, _, weighted_comp) = metrics.compositional_contrast(jac_right, 16)
 
     return weighted_comp.detach().cpu().numpy()
 
@@ -161,40 +129,35 @@ def calculate_ari(images, out):
     return ari_score.detach().cpu().numpy()
 
 
-def evaluate():
+def evaluate(
+    data_path,
+    n_slots,
+    mixed,
+    model_name,
+    model_path,
+    softmax,
+    sampling,
+    sample_mode_test_id,
+    sample_mode_test_ood,
+    batch_size,
+):
     data_path = os.path.join(data_utils.data_path, "dsprites")
-    n_samples_test = 5000
-    n_slots = 2
-    mixed = False
-    delta = 0.125
-    no_overlap = True
-    batch_size = 5
-    sample_mode_test_id = "diagonal"
-    sample_mode_test_ood = "no_overlap_off_diagonal"
 
     wrapper = src.datasets.wrappers.get_wrapper(
         "dsprites",
         path=data_path,
-        load=True,
-        save=False,
     )
 
     id_loader = wrapper.get_test_loader(
-        n_samples_test,
         n_slots,
         sample_mode_test_id,
-        delta,
-        no_overlap,
         batch_size,
         mixed=mixed,
     )
 
     ood_loader = wrapper.get_test_loader(
-        n_samples_test,
         n_slots,
         sample_mode_test_ood,
-        delta,
-        no_overlap,
         batch_size,
         mixed=mixed,
     )
@@ -233,6 +196,8 @@ def evaluate():
     id_ari = []
     ood_ari = []
 
+    n_samples_test_id = len(id_loader.dataset)
+    n_samples_test_ood = len(ood_loader.dataset)
     # evaluating provided models
     for model, hook in zip(models, hooks):
         # mean id scores
@@ -271,20 +236,22 @@ def evaluate():
             id_ari_score += calculate_ari(id_images, id_out)
             ood_ari_score += calculate_ari(ood_images, ood_out)
 
-        id_contrasts.append(id_contrast * batch_size / n_samples_test)
-        ood_contrasts.append(ood_contrast * batch_size / n_samples_test)
+        id_contrasts.append(id_contrast * batch_size / n_samples_test_id)
+        ood_contrasts.append(ood_contrast * batch_size / n_samples_test_ood)
 
-        id_image_r2.append(id_r2 * batch_size / n_samples_test)
-        ood_image_r2.append(ood_r2 * batch_size / n_samples_test)
+        id_image_r2.append(id_r2 * batch_size / n_samples_test_id)
+        ood_image_r2.append(ood_r2 * batch_size / n_samples_test_ood)
 
-        id_encoder_consistency.append(id_consistency * batch_size / n_samples_test)
-        ood_encoder_consistency.append(ood_consistency * batch_size / n_samples_test)
+        id_encoder_consistency.append(id_consistency * batch_size / n_samples_test_id)
+        ood_encoder_consistency.append(
+            ood_consistency * batch_size / n_samples_test_ood
+        )
 
-        id_image_mse.append(id_mse * batch_size / n_samples_test)
-        ood_image_mse.append(ood_mse * batch_size / n_samples_test)
+        id_image_mse.append(id_mse * batch_size / n_samples_test_id)
+        ood_image_mse.append(ood_mse * batch_size / n_samples_test_ood)
 
-        id_ari.append(id_ari_score * batch_size / n_samples_test)
-        ood_ari.append(ood_ari_score * batch_size / n_samples_test)
+        id_ari.append(id_ari_score * batch_size / n_samples_test_id)
+        ood_ari.append(ood_ari_score * batch_size / n_samples_test_ood)
 
         id_id_scores.append(id_id_score)
         ood_id_scores.append(ood_id_score)
@@ -304,4 +271,72 @@ def evaluate():
 
 
 if __name__ == "__main__":
-    evaluate()
+    parser = argparse.ArgumentParser(description="Start evaluation.")
+
+    parser.add_argument(
+        "--data_path",
+        type=str,
+        default="data",
+        help="Path to the dataset folder.",
+    )
+    parser.add_argument(
+        "--n_slots",
+        type=int,
+        default=2,
+        help="Number of slots.",
+    )
+    parser.add_argument(
+        "--mixed",
+        choices=[True, False],
+        default=False,
+        help="Whether to use mixed dataset.",
+    )
+    parser.add_argument(
+        "--model_name",
+        choices=[
+            "SlotMLPAdditive",
+            "SlotAttention",
+        ],
+        default="SlotAttention",
+        help="Model to use.",
+    )
+    parser.add_argument(
+        "--model_path",
+        type=str,
+        default="models",
+        help="Path to the model folder.",
+    )
+    parser.add_argument(
+        "--softmax",
+        choices=[True, False],
+        default=True,
+        help="Whether to use softmax in SlotAttention.",
+    )
+    parser.add_argument(
+        "--sampling",
+        choices=[True, False],
+        default=True,
+        help="Whether to use sampling in SlotAttention.",
+    )
+    parser.add_argument(
+        "--sample_mode_test_id",
+        type=str,
+        default="diagonal",
+        help="Sample mode for the test set.",
+    )
+
+    parser.add_argument(
+        "--sample_mode_test_ood",
+        type=str,
+        default="no_overlap_off_diagonal",
+        help="Sample mode for the test set.",
+    )
+    parser.add_argument(
+        "--batch_size",
+        type=int,
+        default=64,
+        help="Batch size to use.",
+    )
+
+    args = parser.parse_args()
+    evaluate(**vars(args))

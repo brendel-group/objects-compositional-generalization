@@ -3,7 +3,7 @@ import argparse
 from src import train
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Run the training and testing.")
+    parser = argparse.ArgumentParser(description="Start training.")
     parser.add_argument(
         "--device",
         choices=["cuda", "cpu"],
@@ -32,22 +32,22 @@ if __name__ == "__main__":
         help="Whether to use sampling in SlotAttention. False corresponds to the deterministic version of SlotAttention.",
     )
     parser.add_argument(
+        "--dataset_path",
+        type=str,
+        default="data",
+        help="Path to the dataset folder.",
+    )
+    parser.add_argument(
         "--dataset_name",
-        choices=["dsprites", "kubric"],
+        choices=["dsprites"],
         default="dsprites",
-        help="Dataset to use. All datasets are pre-generated and stored in data folder.",
+        help="Dataset to use. All datasets are pre-generated and stored in dataset_path folder.",
     )
     parser.add_argument(
         "--use_consistency_loss",
         choices=[True, False],
         default=True,
         help="Whether to use consistency loss.",
-    )
-    parser.add_argument(
-        "--extended_consistency_loss",
-        choices=[True, False],
-        default=False,
-        help="Whether to use extended consistency loss.",
     )
     parser.add_argument(
         "--unsupervised_mode",
@@ -69,52 +69,10 @@ if __name__ == "__main__":
         help="How often to decrease learning rate.",
     )
     parser.add_argument(
-        "--reconstruction_term_weight",
-        type=float,
-        default=1.0,
-        help="Weight for reconstruction term in total loss.",
-    )
-    parser.add_argument(
-        "--consistency_term_weight",
-        type=float,
-        default=1.0,
-        help="Weight for consistency term in consistency loss.",
-    )
-    parser.add_argument(
-        "--consistency_encoder_term_weight",
-        type=float,
-        default=1.0,
-        help="Weight for consistency encoder loss in consistency loss.",
-    )
-    parser.add_argument(
-        "--consistency_decoder_term_weight",
-        type=float,
-        default=1.0,
-        help="Weight for consistency decoder loss in consistency loss.",
-    )
-    parser.add_argument(
         "--consistency_ignite_epoch",
         type=int,
         default=150,
         help="Epoch to start consistency loss.",
-    )
-    parser.add_argument(
-        "--n_samples_train",
-        type=int,
-        default=100000,
-        help="Number of samples in training dataset.",
-    )
-    parser.add_argument(
-        "--n_samples_truncate",
-        type=int,
-        default=None,
-        help="Number of samples to truncate training dataset to.",
-    )
-    parser.add_argument(
-        "--n_samples_test",
-        type=int,
-        default=5000,
-        help="Number of samples in testing dataset (ID and OOD).",
     )
     parser.add_argument(
         "--n_slots", type=int, default=2, help="Number of slots, i.e. objects in scene."
@@ -126,19 +84,11 @@ if __name__ == "__main__":
         help="Number of latents per slot. GT is 5.",
     )
     parser.add_argument(
-        "--no_overlap",
-        choices=[True, False],
-        default=True,
-        help="Whether to allow overlapping figures.",
-    )
-
-    parser.add_argument(
         "--sample_mode_train",
         type=str,
         default="diagonal",
         help="Sampling mode for training dataset.",
     )
-
     parser.add_argument(
         "--sample_mode_test_id",
         type=str,
@@ -152,26 +102,22 @@ if __name__ == "__main__":
         default="no_overlap_off_diagonal",
         help="Sampling mode for OOD testing dataset.",
     )
-
-    parser.add_argument(
-        "--delta",
-        type=float,
-        default=0.125,
-        help="Delta for 'diagonal' and 'off_diagonal' dataset.",
-    )
-
     parser.add_argument("--seed", type=int, default=2023, help="Random seed to use.")
-
+    parser.add_argument(
+        "--checkpoint_path",
+        type=str,
+        default="checkpoints",
+        help="Path to save checkpoints.",
+    )
     parser.add_argument(
         "--load_checkpoint",
         type=str,
         default=None,
-        help="Path to checkpoint to load.",
+        help="Path to load checkpoint from (for continuing training).",
     )
 
     args = parser.parse_args()
 
     print(args)
 
-    args.save_name = f"temp"  # < -- change this to specify the name of the model
     train.run(**vars(args))

@@ -1,13 +1,8 @@
-"""
-This file contains functions and wrappers for loading/creating SpritesWorldDataset.
-The sole purpose of this file is to make train.py more readable.
-"""
 import os
 
 import torch
 import tqdm
 
-data_path = "SET THIS TO YOUR DATA PATH"
 # data should ook like this:
 # data_path
 # └── dsprites
@@ -29,8 +24,6 @@ data_path = "SET THIS TO YOUR DATA PATH"
 #            └── latents
 #                └── latents.pt
 #
-# Link to the downloading the dataset would be avaliable when the code is published.
-code_path = "SET THIS TO YOUR DATA PATH"  # not nessesary
 
 
 def dump_generated_dataset(dataset: torch.utils.data.TensorDataset, path: str):
@@ -53,15 +46,14 @@ def dump_generated_dataset(dataset: torch.utils.data.TensorDataset, path: str):
 class PreGeneratedDataset(torch.utils.data.Dataset):
     """Loads pre-generated SpriteWorldDataset from a directory."""
 
-    def __init__(self, path: str, n_samples: int = None):
+    def __init__(self, path: str):
         self.path = path
-        self.n_samples = n_samples
         self.images = torch.load(os.path.join(path, "images", "images.pt"))
         self.latents = torch.load(os.path.join(path, "latents", "latents.pt"))
 
         if self.n_samples is not None:
-            self.images = self.images[: self.n_samples]
-            self.latents = self.latents[: self.n_samples]
+            self.images = self.images
+            self.latents = self.latents
 
     def __len__(self):
         return len(self.images)
@@ -71,7 +63,9 @@ class PreGeneratedDataset(torch.utils.data.Dataset):
 
 
 class MixedDataset(torch.utils.data.Dataset):
-    """Loads pre-generated mixed SpriteWorldDataset from a directory."""
+    """
+    Loads pre-generated mixed SpriteWorldDataset (with a varying number of objects in the scene) from a directory.
+    """
 
     def __init__(self, path: str, n_samples: int = None):
         self.path = path
@@ -143,3 +137,54 @@ def collate_fn_normalizer(batch, bias=0, scale=1, mixed=False, device="cpu"):
         return torch.stack(images), latents
     latents = (latents - bias) / scale
     return torch.stack(images).to(device), latents.to(device)
+
+
+def filter_objects(latents, max_objects=5000, threshold=0.2, sort=False):
+    """
+    Filter objects based on their Euclidean distance.
+    Args:
+        latents: Tensor of shape (batch_size, n_slots, n_latents)
+        max_objects: Number of objects to keep at most
+        threshold: Distance threshold
+        sort: Whether to sort the objects by distance
+    """
+    N, slots, _ = latents.size()
+    mask = torch.zeros(N, dtype=bool)
+
+    # Compute Euclidean distance for each pair of slots in each item
+    for n in range(N):
+        slots_distances = torch.cdist(latents[n, :, :2], latents[n, :, :2], p=2)
+        slots_distances.fill_diagonal_(float("inf"))  # Ignore distance to self
+
+        # Consider an object as "close" if its minimal distance to any other object is below the threshold
+        min_distance = slots_distances.min().item()
+        if min_distance >= threshold:
+            mask[n] = True
+
+    # If all objects are "close", print a message and return
+    if not torch.any(mask):
+        print("No objects were found that meet the distance threshold.")
+        return None, []
+
+    # Apply the mask to the latents
+    filtered_objects = latents[mask]
+    filtered_indices = torch.arange(N)[mask]
+
+    # If the number of filtered objects exceeds the maximum, truncate them
+    if filtered_objects.size(0) > max_objects:
+        filtered_objects = filtered_objects[:max_objects]
+        filtered_indices = filtered_indices[:max_objects]
+
+    if sort:
+        # Sort the filtered objects by minimum distance to any other object
+        min_distances = torch.zeros(mask.sum().item())
+        for i, n in enumerate(torch.where(mask)[0]):
+            slots_distances = torch.cdist(latents[n], latents[n], p=2)
+            slots_distances.fill_diagonal_(float("inf"))
+            min_distances[i] = slots_distances.min().item()
+
+        indices = torch.argsort(min_distances)
+        filtered_objects = filtered_objects[indices]
+        filtered_indices = filtered_indices[indices]
+
+    return filtered_objects, filtered_indices.tolist()

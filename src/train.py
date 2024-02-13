@@ -19,15 +19,10 @@ def one_epoch(
     device,
     mode,
     epoch,
-    reconstruction_term_weight=1,
-    consistency_term_weight=1,
-    consistency_encoder_term_weight=1,
-    consistency_decoder_term_weight=1,
     consistency_ignite_epoch=0,
     use_consistency_loss=True,
-    extended_consistency_loss=False,
-    unsupervised_mode=False,
     freq=1,
+    unsupervised_mode=True,
     **kwargs,
 ):
     """One epoch of training or testing. Please check main.py for keyword parameters descriptions'."""
@@ -68,10 +63,6 @@ def one_epoch(
             images,
             use_consistency_loss=use_consistency_loss
             * (epoch >= consistency_ignite_epoch),
-            extended_consistency_loss=extended_consistency_loss
-            * (epoch >= consistency_ignite_epoch),
-            true_latents=true_latents,
-            true_figures=true_figures,
         )
 
         if "loss" in output_dict:
@@ -102,7 +93,7 @@ def one_epoch(
             accum_ari_score += ari_score.item() * accum_adjustment
 
         # add to total loss
-        total_loss += reconstruction_loss * reconstruction_term_weight
+        total_loss += reconstruction_loss
 
         # calculate slots loss and r2 score for supervised models
         if not unsupervised_mode:
@@ -134,14 +125,10 @@ def one_epoch(
                     consistency_encoder_loss.item() * accum_adjustment
                 )
 
-            consistency_loss = (
-                consistency_encoder_loss
-                * consistency_encoder_term_weight
-                * use_consistency_loss
-            )
+            consistency_loss = consistency_encoder_loss * use_consistency_loss
 
         if model.model_name != "SlotMLPMonolithic":
-            with nullcontext() if extended_consistency_loss else torch.no_grad():
+            with torch.no_grad():
                 consistency_decoder_loss = metrics.reconstruction_loss(
                     output_dict["sampled_image"],
                     output_dict["reconstructed_sampled_image"],
@@ -150,21 +137,10 @@ def one_epoch(
                     consistency_decoder_loss.item() * accum_adjustment
                 )
 
-        # add to consistency loss only if extended_consistency_loss is True
-        if extended_consistency_loss:
-            consistency_loss += (
-                consistency_decoder_loss
-                * consistency_decoder_term_weight
-                * extended_consistency_loss
-            )
-
         if model.model_name != "SlotMLPMonolithic":
-            consistency_loss *= consistency_term_weight
             accum_consistency_loss += consistency_loss.item() * accum_adjustment
 
-        if (
-            use_consistency_loss or extended_consistency_loss
-        ) and epoch >= consistency_ignite_epoch:
+        if (use_consistency_loss) and epoch >= consistency_ignite_epoch:
             # add to total loss
             total_loss += consistency_loss
 
@@ -190,25 +166,18 @@ def one_epoch(
 def run(
     *,
     model_name,
+    dataset_path,
+    checkpoint_path,
     dataset_name,
     device,
     epochs,
     batch_size,
     lr,
     lr_scheduler_step,
-    reconstruction_term_weight,
-    consistency_term_weight,
-    consistency_encoder_term_weight,
-    consistency_decoder_term_weight,
     consistency_ignite_epoch,
     use_consistency_loss,
     softmax,
     sampling,
-    extended_consistency_loss,
-    unsupervised_mode,
-    n_samples_train,
-    n_samples_truncate,
-    n_samples_test,
     n_slots,
     n_slot_latents,
     no_overlap,
@@ -223,17 +192,16 @@ def run(
     Run the training and testing. Currently only supports SpritesWorld dataset.
     Check main.py for the description of the parameters.
     """
-    global data_path
-    data_path = os.path.join(data_utils.data_path, dataset_name)
+    dataset_path = os.path.join(dataset_path, dataset_name)
     signature_args = locals().copy()
 
     training_utils.set_seed(seed)
 
     ##### Loading Data #####
-    os.path.isdir(data_path)
+    os.path.isdir(dataset_path)
     wrapper = src.datasets.wrappers.get_wrapper(
         dataset_name,
-        path=data_path,
+        path=dataset_path,
         load=True,
         save=False,
     )
@@ -304,7 +272,7 @@ def run(
     for epoch in range(start_epoch, epochs + 1):
         if epoch == consistency_ignite_epoch and use_consistency_loss:
             training_utils.save_checkpoint(
-                path=data_utils.data_path,
+                path=checkpoint_path,
                 **locals(),
                 checkpoint_name=f"before_ignite_model_{sample_mode_train}_{seed}",
             )
@@ -361,15 +329,15 @@ def run(
                 **signature_args,
             )
 
-            checkpoint_save_path = data_utils.data_path  # change this to your path
+            save_name = f"{model_name}_{sample_mode_train}_{seed}"
             training_utils.save_checkpoint(
-                path=checkpoint_save_path,
+                path=checkpoint_path,
                 **locals(),
                 checkpoint_name=f"{save_name}_{epoch}",
             )
 
     training_utils.save_checkpoint(
-        path=checkpoint_save_path,
+        path=checkpoint_path,
         **locals(),
         checkpoint_name=f"{save_name}_{epoch}",
     )

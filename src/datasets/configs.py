@@ -84,23 +84,3 @@ class SpriteWorldConfig(Config):
     c0: Range = field(default=Range(0.05, 0.95), metadata={"rv_type": "continuous"})
     c1: Range = field(default=Range(1, 1), metadata={"rv_type": "continuous"})
     c2: Range = field(default=Range(1, 1), metadata={"rv_type": "continuous"})
-
-
-@dataclasses.dataclass
-class KubricConfig(Config):
-    """
-    Config class for Kubric dataset.
-    """
-
-    x: Range = field(default=Range(-1.1, 1.1), metadata={"rv_type": "continuous"})
-    y: Range = field(default=Range(-1.1, 1.1), metadata={"rv_type": "continuous"})
-    z: Range = field(default=Range(0, 0), metadata={"rv_type": "continuous"})
-    color: Range = field(default=Range(0, 1.0), metadata={"rv_type": "continuous"})
-    scale: Range = field(default=Range(0.1, 0.6), metadata={"rv_type": "continuous"})
-    shape: List[str] = field(
-        default_factory=lambda: [
-            "cube",
-            "sphere",
-        ],
-        metadata={"rv_type": "categorical"},
-    )

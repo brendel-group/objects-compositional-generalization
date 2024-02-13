@@ -7,7 +7,7 @@ import numpy as np
 import torch
 from scipy.optimize import linear_sum_assignment
 from sklearn.metrics import adjusted_rand_score
-from src.model_evaluation import evaluate_model
+from src.identifiability_evaluation import evaluate_model
 from torchmetrics import R2Score
 
 
@@ -291,3 +291,53 @@ def identifiability_score(
     id_score_ood /= z_true_ood.shape[-1]
 
     return id_score_id, id_score_ood
+
+
+def compositional_contrast(
+    jac: torch.Tensor, slot_dim: int
+) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """
+    Calculate the compositional contrast score.
+
+    For more details see: https://arxiv.org/abs/2305.14229
+
+    Brady, Jack, et al. "Provably Learning Object-Centric Representations."
+    arXiv preprint arXiv:2305.14229 (2023).
+    Args:
+        jac: torch.Tensor: Jacobian of the reconstruction function. Shape: (batch_size, obs_dim, z_dim)
+        slot_dim: int: Dimension of the slot.
+
+    Returns:
+        comp_cont: torch.Tensor: Compositional contrast score.
+        comp_cont_norm: torch.Tensor: Normalized compositional contrast score.
+        weight_comp_cont_norm: torch.Tensor: Weighted normalized compositional contrast score.
+    """
+    batch_size, obs_dim, z_dim = jac.shape[0], jac.shape[1], jac.shape[2]
+    num_slots = int(z_dim / slot_dim)
+    jac = jac.reshape(
+        batch_size * obs_dim, z_dim
+    )  # batch_size*obs_dim x num_slots*slot_dim
+    slot_rows = torch.stack(
+        torch.split(jac, slot_dim, dim=1)
+    )  # num_slots x batch_size*obs_dim x slot_dim
+    slot_norms = torch.norm(slot_rows, dim=2)  # num_slots x batch_size*obs_dim
+    slot_norms = slot_norms.view(num_slots, batch_size, obs_dim).permute(
+        1, 0, 2
+    )  # batch_size x num_slots x obs_dim
+    slot_norms += 1e-12
+    slot_norms_max = slot_norms.sum(1) / num_slots
+    slot_norms_norm = slot_norms / slot_norms_max.unsqueeze(1).repeat(1, num_slots, 1)
+    max_norm_all = torch.max(slot_norms_max, 1)[0]
+    weights = slot_norms_max / max_norm_all.unsqueeze(1).repeat(1, obs_dim)
+
+    comp_conts = 0
+    comp_conts_norm = 0
+    for i in range(num_slots):
+        for j in range(i, num_slots - 1):
+            comp_conts += slot_norms[:, i] * slot_norms[:, j + 1]
+            comp_conts_norm += slot_norms_norm[:, i] * slot_norms_norm[:, j + 1]
+    comp_cont = (comp_conts).sum(1).mean()
+    comp_cont_norm = (comp_conts_norm).sum(1).mean()
+    weight_comp_cont_norm = ((comp_conts_norm) * weights).sum(1)
+
+    return comp_cont, comp_cont_norm, weight_comp_cont_norm
