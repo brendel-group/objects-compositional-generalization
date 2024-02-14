@@ -7,8 +7,8 @@ Official code for the paper [Provable Compositional Generalization for Object-Ce
 This code was tested with Python 3.10. Start by cloning the repository:
 
 ```bash
-git clone https://github.com/your-repository-url-here
-cd your-repository-directory
+git clone https://github.com/kotekjedi/object_centric_ood.git
+cd object_centric_ood
 ```
 
 Then, set up your environment by choosing one of the following methods:
