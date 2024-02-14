@@ -7,9 +7,10 @@ import torch
 import tqdm
 from PIL import Image
 from spriteworld import environment, renderers, sprite, tasks
+from torchvision import transforms
+
 from src.datasets.configs import SpriteWorldConfig
 from src.utils.sampling_utils import sample_latents
-from torchvision import transforms
 
 warnings.filterwarnings("ignore", module="spriteworld")
 

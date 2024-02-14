@@ -4,7 +4,6 @@ from contextlib import nullcontext
 import torch
 import torch.utils.data
 
-import src.datasets.utils as data_utils
 import src.datasets.wrappers
 import src.metrics as metrics
 import src.models
