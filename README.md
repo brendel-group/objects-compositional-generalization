@@ -21,6 +21,7 @@ Then, set up your environment by choosing one of the following methods:
    ```
 
 </details>
+
 Or, alternatively, you can use Docker:
 
 <details open>
@@ -38,7 +39,60 @@ Build and run a Docker container using the provided Dockerfile:
 
 🔗 For understanding how the data is look like and play with the data generation, please refer to the `notebooks/Sprite-World Dataset Example.ipynb` notebook.
 
-🔗 For the actual data generation, please refer to the `notebooks/Data Generation.ipynb` notebook.
+🔗 For the actual data generation, please refer to the `notebooks/Data Generation.ipynb` notebook. The folder used for saving the dataset at this point would be used for training and evaluation.
 
 
 ## Training and Evaluation
+
+### Training
+To train the model, run the following command:
+
+```bash
+python train.py --dataset_path "/path/from/previous/step" --model_name "SlotAttention" --num_slots 2 --epochs 400 --use_consistency_loss True
+```
+
+For complete details on the parameters, please refer to the `main.py` file.
+
+You can find some example commands for training below:
+
+<details open>
+<summary><strong>Different training setups</strong></summary>
+
+   - <details>
+      <summary><strong>Training SlotAttention:</strong></summary>
+
+      Training vanilla SlotAttention with 2 slots:
+      ```bash
+      python train.py --dataset_path "/path/from/previous/step" --model_name "SlotAttention" --num_slots 2 --use_consistency_loss False
+      ```
+
+      Training vanilla SlotAttention with 2 slots and consistency loss:
+      ```bash
+      python train.py --dataset_path "/path/from/previous/step" --model_name "SlotAttention" --num_slots 2 --use_consistency_loss True --consistency_ignite_epoch 150
+      ```
+
+      Training SlotAttention with 2 slots, fixed SoftMax and sampling:
+      ```bash
+      python train.py --dataset_path "/path/from/previous/step" --model_name "SlotAttention" --num_slots 2 --use_consistency_loss True --consistency_ignite_epoch 150 --softmax False --sampling False
+      ```
+   </details>
+
+   - <details>
+      <summary><strong>Training AE model:</strong></summary>
+
+      Training vanilla autoencoder with 2 slots:
+      ```bash
+      python train.py --dataset_path "/path/from/previous/step" --model_name "SlotMLPAdditive" --epochs 300 --num_slots 2 -n_slot_latents 6 --use_consistency_loss False
+      ```
+
+      Training vanilla autoencoder with 2 slots and consistency loss:
+      ```bash
+      python train.py --dataset_path "/path/from/previous/step" --model_name "SlotMLPAdditive" --epochs 300 --num_slots 2 -n_slot_latents 6 --use_consistency_loss True --consistency_ignite_epoch 100
+      ```
+
+
+      </details>
+
+</details>
+
+### Evaluation

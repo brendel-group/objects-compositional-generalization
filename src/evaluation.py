@@ -1,13 +1,14 @@
 import argparse
 import os
 
+import torch
+from torch.func import jacfwd
+
 import src
 import src.metrics as metrics
-import torch
 from src.datasets import utils as data_utils
 from src.models import base_models, slot_attention
 from src.utils import training_utils
-from torch.func import jacfwd
 
 
 def load_model_and_hook(path, model_name, softmax=True, sampling=True):
@@ -162,26 +163,16 @@ def evaluate(
         mixed=mixed,
     )
 
-    # example of how you could load multiple models, feel free to change this
-    paths = "MODEL PATH"
-    model_name = "SlotMLPAdditive"
-    softmax = False  # only for SlotAttention
-    sampling = False  # only for SlotAttention
-    paths_and_names = []
-    for name in os.listdir(paths):
-        if name.endswith(".pt"):
-            paths_and_names.append((os.path.join(paths, name), model_name))
-
+    # you can add more models here
     models = []
     hooks = []
-    for path, name in paths_and_names:
-        model, decoder_hook = load_model_and_hook(
-            path, name, softmax=softmax, samplig=sampling
-        )
-        models.append(model)
-        hooks.append(decoder_hook)
+    model, decoder_hook = load_model_and_hook(
+        model_path, model_name, softmax=softmax, samplig=sampling
+    )
+    models.append(model)
+    hooks.append(decoder_hook)
 
-    cast_models_to_cuda(models)
+    cast_models_to_cuda(model)
 
     id_id_scores = []
     ood_id_scores = []
@@ -274,7 +265,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Start evaluation.")
 
     parser.add_argument(
-        "--data_path",
+        "--dataset_path",
         type=str,
         default="data",
         help="Path to the dataset folder.",

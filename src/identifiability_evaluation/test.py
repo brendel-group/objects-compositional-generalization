@@ -258,12 +258,6 @@ def test_models(
 
     losses = np.mean(np.stack(batched_losses, 0), 0)
 
-    if verbose > 0:
-        print(
-            f"Test Losses: {losses[0]:.4f} (on-diagonal), "
-            f"{losses[1]:.4f} (off-diagonal)."
-        )
-
     z_test_output_cont = z_test_output[..., continuous_dimensions]
     z_test_output_cat = z_test_output[..., categorical_dimensions]
 

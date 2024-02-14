@@ -1,4 +1,5 @@
 import os
+import time
 from typing import Tuple
 
 import numpy as np
@@ -116,7 +117,6 @@ def save_checkpoint(
     scheduler: torch.optim.lr_scheduler._LRScheduler,
     model_name: str,
     epoch: int,
-    time_created: str,
     checkpoint_name: str,
     path: str,
     **kwargs,
@@ -124,7 +124,8 @@ def save_checkpoint(
     """
     Saves a checkpoint of the model, optimizer, and scheduler states to disk.
     """
-
+    time_created = time.strftime("%Y%m%d-%H%M%S")
+    os.makedirs(path, exist_ok=True)
     checkpoint = {
         "epoch": epoch,
         "model_state_dict": model.state_dict(),
@@ -135,7 +136,6 @@ def save_checkpoint(
         checkpoint,
         os.path.join(
             path,
-            "checkpoints",
             f"{model_name}_{time_created}_{checkpoint_name}_checkpoint.pt",
         ),
     )

@@ -29,10 +29,6 @@ class PreGeneratedDataset(torch.utils.data.Dataset):
         self.images = torch.load(os.path.join(path, "images", "images.pt"))
         self.latents = torch.load(os.path.join(path, "latents", "latents.pt"))
 
-        if self.n_samples is not None:
-            self.images = self.images
-            self.latents = self.latents
-
     def __len__(self):
         return len(self.images)
 

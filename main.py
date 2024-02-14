@@ -115,6 +115,12 @@ if __name__ == "__main__":
         default=None,
         help="Path to load checkpoint from (for continuing training).",
     )
+    parser.add_argument(
+        "--evaluation_frequency",
+        type=int,
+        default=50,
+        help="How often to evaluate the model during training.",
+    )
 
     args = parser.parse_args()
 

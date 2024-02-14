@@ -1,13 +1,14 @@
 import os.path
 from contextlib import nullcontext
 
+import torch
+import torch.utils.data
+
 import src.datasets.utils as data_utils
 import src.datasets.wrappers
 import src.metrics as metrics
 import src.models
 import src.utils.training_utils as training_utils
-import torch
-import torch.utils.data
 
 from .models import base_models, slot_attention
 
@@ -175,18 +176,18 @@ def run(
     lr,
     lr_scheduler_step,
     consistency_ignite_epoch,
+    unsupervised_mode,
     use_consistency_loss,
     softmax,
     sampling,
     n_slots,
     n_slot_latents,
-    no_overlap,
     sample_mode_train,
     sample_mode_test_id,
     sample_mode_test_ood,
     seed,
     load_checkpoint,
-    save_name,
+    evaluation_frequency,
 ):
     """
     Run the training and testing. Currently only supports SpritesWorld dataset.
@@ -202,8 +203,6 @@ def run(
     wrapper = src.datasets.wrappers.get_wrapper(
         dataset_name,
         path=dataset_path,
-        load=True,
-        save=False,
     )
 
     test_loader_id = wrapper.get_test_loader(
@@ -224,25 +223,21 @@ def run(
             in_channels,
             n_slots,
             n_slot_latents,
-            no_overlap=no_overlap,
-            dataset_name=dataset_name,
         ).to(device)
     elif model_name == "SlotMLPMonolithic":
-        model = base_models.SlotMLPMonolithic(
-            in_channels, n_slots, n_slot_latents, dataset_name=dataset_name
-        ).to(device)
+        model = base_models.SlotMLPMonolithic(in_channels, n_slots, n_slot_latents).to(
+            device
+        )
     elif model_name == "SlotAttention":
         encoder = slot_attention.SlotAttentionEncoder(
             resolution=resolution,
             hid_dim=n_slot_latents,
             ch_dim=ch_dim,
-            dataset_name=dataset_name,
         ).to(device)
         decoder = slot_attention.SlotAttentionDecoder(
             hid_dim=n_slot_latents,
             ch_dim=ch_dim,
             resolution=resolution,
-            dataset_name=dataset_name,
         ).to(device)
         model = slot_attention.SlotAttentionAutoEncoder(
             encoder=encoder,
@@ -250,8 +245,6 @@ def run(
             num_slots=n_slots,
             num_iterations=3,
             hid_dim=n_slot_latents,
-            dataset_name=dataset_name,
-            no_overlap=no_overlap,
             sampling=sampling,  # change to False for the "fixed" model
             softmax=softmax,  # change to False for the "fixed" model
         ).to(device)
@@ -298,7 +291,8 @@ def run(
 
         print("Learning rate: ", optimizer.param_groups[0]["lr"])
 
-        if epoch % 1 == 0:
+        if epoch % evaluation_frequency == 0:
+            print("\nEvaluating model\n")
             if model_name in ["SlotAttention", "SlotMLPAdditive"] and epoch % 1 == 0:
                 if dataset_name == "dsprites":
                     categorical_dimensions = [2]
@@ -309,6 +303,9 @@ def run(
                     test_loader_ood,
                     categorical_dimensions,
                     device,
+                )
+                print(
+                    f"ID score ID: {id_score_id:.4f}, ID score OOD: {id_score_ood:.4f}"
                 )
 
             id_rec_loss = one_epoch(
@@ -335,6 +332,8 @@ def run(
                 **locals(),
                 checkpoint_name=f"{save_name}_{epoch}",
             )
+
+            print("\nEvaluation done\n")
 
     training_utils.save_checkpoint(
         path=checkpoint_path,

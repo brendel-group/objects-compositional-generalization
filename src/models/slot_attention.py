@@ -2,14 +2,16 @@
 Slot Attention-based autoencoder; implementation is adapted from 
 https://github.com/addtt/object-centric-library.
 """
+
 from contextlib import nullcontext
 from typing import Any, Dict
 
 import numpy as np
 import torch
 import torch.nn.functional as F
-from src.utils.training_utils import sample_z_from_latents
 from torch import nn
+
+from src.utils.training_utils import sample_z_from_latents
 
 
 class SlotAttentionAutoEncoder(nn.Module):
@@ -20,7 +22,6 @@ class SlotAttentionAutoEncoder(nn.Module):
         num_slots,
         num_iterations,
         hid_dim,
-        dataset_name,
         softmax=True,
         sampling=True,
     ):
@@ -121,9 +122,7 @@ class SlotAttentionAutoEncoder(nn.Module):
         # we always want to look at the consistency loss, but we not always want to backpropagate through consistency part
         consistency_pass_dict = self.consistency_pass(
             hat_z,
-            figures,
             use_consistency_loss,
-            extended_consistency_loss,
         )
 
         output_dict.update(consistency_pass_dict)
@@ -263,9 +262,8 @@ class SoftPositionEmbed(nn.Module):
 
 
 class SlotAttentionEncoder(nn.Module):
-    def __init__(self, resolution, hid_dim, ch_dim, dataset_name):
+    def __init__(self, resolution, hid_dim, ch_dim):
         super().__init__()
-        self.dataset_name = dataset_name
         self.conv1 = nn.Conv2d(3, ch_dim, 5, padding=2)
         self.conv2 = nn.Conv2d(ch_dim, ch_dim, 5, padding=2)
         self.conv3 = nn.Conv2d(ch_dim, ch_dim, 5, padding=2)
@@ -288,9 +286,8 @@ class SlotAttentionEncoder(nn.Module):
 
 
 class SlotAttentionDecoder(nn.Module):
-    def __init__(self, ch_dim, hid_dim, resolution, dataset_name):
+    def __init__(self, ch_dim, hid_dim, resolution):
         super().__init__()
-        self.dataset_name = dataset_name
 
         self.decoder_initial_size = (64, 64)
 

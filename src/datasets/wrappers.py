@@ -1,14 +1,10 @@
 import os
 
 import torch
-from src.datasets import configs, data
-from src.datasets.utils import (
-    MixedDataset,
-    PreGeneratedDataset,
-    collate_fn_normalizer,
-    dump_generated_dataset,
-)
 from torchvision import transforms as transforms
+
+from src.datasets import configs, data
+from src.datasets.utils import MixedDataset, PreGeneratedDataset, collate_fn_normalizer
 
 
 class DataWrapper:
@@ -77,9 +73,8 @@ class SpritesWorldDataWrapper(DataWrapper):
         mixed=False,
         **kwargs,
     ):
-        target_path = os.path.join(
-            self.path, "train", sample_mode_train, f"{n_slots}_objects"
-        )
+        target_path = os.path.join(self.path, "train", sample_mode_train)
+        print(f"Loading train dataset from {target_path}.")
         if os.path.exists(target_path) and not mixed:
             train_dataset = PreGeneratedDataset(target_path)
             print(f"Train dataset successfully loaded from {target_path}.")
@@ -91,7 +86,7 @@ class SpritesWorldDataWrapper(DataWrapper):
             print(f"Train dataset successfully loaded from {target_path}.")
         else:
             raise ValueError(
-                f"Train dataset for {sample_mode_train} and {n_slots} objects not found."
+                f"Train dataset for {sample_mode_train} objects not found."
             )
 
         train_loader = torch.utils.data.DataLoader(
@@ -113,10 +108,9 @@ class SpritesWorldDataWrapper(DataWrapper):
         mixed=False,
         **kwargs,
     ):
-        target_path = os.path.join(
-            self.path, "test", sample_mode_test, f"{n_slots}_objects"
-        )
-        if self.load and os.path.exists(target_path) and not mixed:
+        target_path = os.path.join(self.path, "test", sample_mode_test)
+        print(f"Loading test dataset from {target_path}.")
+        if os.path.exists(target_path) and not mixed:
             test_dataset = PreGeneratedDataset(target_path)
             print(
                 f"Test {sample_mode_test} dataset successfully loaded from {target_path}."
@@ -131,9 +125,7 @@ class SpritesWorldDataWrapper(DataWrapper):
             )
             test_dataset = MixedDataset(target_path)
         else:
-            raise ValueError(
-                f"Test dataset for {sample_mode_test} and {n_slots} objects not found."
-            )
+            raise ValueError(f"Test dataset for {sample_mode_test} objects not found.")
         test_loader = torch.utils.data.DataLoader(
             test_dataset,
             batch_size=batch_size,
@@ -146,8 +138,8 @@ class SpritesWorldDataWrapper(DataWrapper):
         return test_loader
 
 
-def get_wrapper(dataset_name, path, save=False, load=False):
+def get_wrapper(dataset_name, path):
     if dataset_name == "dsprites":
-        return SpritesWorldDataWrapper(path, save, load)
+        return SpritesWorldDataWrapper(path)
     else:
         raise ValueError(f"Unknown dataset name {dataset_name}")

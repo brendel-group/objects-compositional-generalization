@@ -1,14 +1,16 @@
 """
 Metrics for evaluating models.
 """
+
 from typing import List, Tuple
 
 import numpy as np
 import torch
 from scipy.optimize import linear_sum_assignment
 from sklearn.metrics import adjusted_rand_score
-from src.identifiability_evaluation import evaluate_model
 from torchmetrics import R2Score
+
+from src.identifiability_evaluation import evaluate_model
 
 
 def r2_score(
@@ -220,7 +222,7 @@ def identifiability_score(
             images = images[:, -1, ...].to(device)
             true_latents = true_latents.to(device)
             z_true_id.append(true_latents)
-            output = model(images, not_ignore_consistency=False)
+            output = model(images)
             z_pred_id.append(output["predicted_latents"])
 
     z_true_id = torch.cat(z_true_id, dim=0)
@@ -231,7 +233,7 @@ def identifiability_score(
             images = images[:, -1, ...].to(device)
             true_latents = true_latents.to(device)
             z_true_ood.append(true_latents)
-            output = model(images, not_ignore_consistency=False)
+            output = model(images)
             z_pred_ood.append(output["predicted_latents"])
 
     z_true_ood = torch.cat(z_true_ood, dim=0)

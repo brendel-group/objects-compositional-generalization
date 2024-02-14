@@ -2,19 +2,18 @@ from contextlib import nullcontext
 from typing import Any, Dict
 
 import torch
+
 from src.utils.training_utils import sample_z_from_latents
 
 from . import utils
 
 
 class SlotEncoder(torch.nn.Module):
-    def __init__(self, in_channels, n_slots, n_slot_latents, dataset_name):
+    def __init__(self, in_channels, n_slots, n_slot_latents):
         super(SlotEncoder, self).__init__()
         self.n_slots = n_slots
         self.n_slot_latents = n_slot_latents
-        self.encoder = utils.get_encoder(
-            in_channels, n_slots * n_slot_latents, dataset_name
-        )
+        self.encoder = utils.get_encoder(in_channels, n_slots * n_slot_latents)
 
     def forward(self, x):
         x = self.encoder(x)
@@ -33,12 +32,11 @@ class SlotMLPAdditiveDecoder(torch.nn.Module):
         in_channels: int,
         n_slots: int,
         n_slot_latents: int,
-        dataset_name: str,
     ) -> None:
         super(SlotMLPAdditiveDecoder, self).__init__()
         self.n_slots = n_slots
         self.n_slot_latents = n_slot_latents
-        self.decoder = utils.get_decoder(n_slot_latents, in_channels, dataset_name)
+        self.decoder = utils.get_decoder(n_slot_latents, in_channels)
         self.model_name = "SlotMLPAdditiveDecoder"
 
     def forward(self, latents):
@@ -69,14 +67,11 @@ class SlotMLPMonolithicDecoder(torch.nn.Module):
         in_channels: int,
         n_slots: int,
         n_slot_latents: int,
-        dataset_name: str,
     ) -> None:
         super(SlotMLPMonolithicDecoder, self).__init__()
         self.n_slots = n_slots
         self.n_slot_latents = n_slot_latents
-        self.decoder = utils.get_decoder(
-            n_slots * n_slot_latents, in_channels, dataset_name
-        )
+        self.decoder = utils.get_decoder(n_slots * n_slot_latents, in_channels)
         self.model_name = "SlotMLPMonolithicDecoder"
 
     def forward(self, latents):
@@ -95,15 +90,12 @@ class SlotMLPMonolithic(torch.nn.Module):
         in_channels: int,
         n_slots: int,
         n_slot_latents: int,
-        dataset_name: str,
     ) -> None:
         super(SlotMLPMonolithic, self).__init__()
         self.n_slots = n_slots
         self.n_slot_latents = n_slot_latents
-        self.encoder = SlotEncoder(in_channels, n_slots, n_slot_latents, dataset_name)
-        self.decoder = SlotMLPMonolithicDecoder(
-            in_channels, n_slots, n_slot_latents, dataset_name
-        )
+        self.encoder = SlotEncoder(in_channels, n_slots, n_slot_latents)
+        self.decoder = SlotMLPMonolithicDecoder(in_channels, n_slots, n_slot_latents)
         self.model_name = "SlotMLPMonolithic"
 
     def forward(self, x, **kwargs):
@@ -130,28 +122,23 @@ class SlotMLPAdditive(torch.nn.Module):
         n_slots: int,
         n_slot_latents: int,
         no_overlap: bool = False,
-        dataset_name: str = "dsprites",
     ) -> None:
         super(SlotMLPAdditive, self).__init__()
         self.n_slots = n_slots
         self.n_slot_latents = n_slot_latents
         self.no_overlap = no_overlap
-        self.encoder = SlotEncoder(in_channels, n_slots, n_slot_latents, dataset_name)
-        self.decoder = SlotMLPAdditiveDecoder(
-            in_channels, n_slots, n_slot_latents, dataset_name
-        )
+        self.encoder = SlotEncoder(in_channels, n_slots, n_slot_latents)
+        self.decoder = SlotMLPAdditiveDecoder(in_channels, n_slots, n_slot_latents)
         self.model_name = "SlotMLPAdditive"
 
     def consistency_pass(
         self,
         hat_z,
         use_consistency_loss,
-        z_sampled=None,
     ):
         # getting imaginary samples
         with torch.no_grad():
-            if z_sampled is None:
-                z_sampled, indices = sample_z_from_latents(hat_z.detach())
+            z_sampled, indices = sample_z_from_latents(hat_z.detach())
             x_sampled, figures_sampled = self.decoder(z_sampled)
             x_sampled = torch.clamp(x_sampled, 0, 1)
 
@@ -212,25 +199,11 @@ class SlotMLPAdditive(torch.nn.Module):
             "reconstructed_figures": figures.permute(1, 0, 2, 3, 4),
         }
         # we always want to look at the consistency loss, but we not always want to backpropagate through consistency part
-        if (
-            true_latents is not None
-            and true_figures is not None
-            and self.no_overlap
-            and use_consistency_loss
-        ):
-            with torch.no_grad():
-                z_sampled = sample_z_from_latents_no_overlap(
-                    true_latents, hat_z, true_figures, figures, hat_z.device
-                )
-        else:
-            z_sampled = None
 
         if not_ignore_consistency:
             consistency_pass_dict = self.consistency_pass(
                 hat_z,
-                figures,
                 use_consistency_loss,
-                z_sampled=z_sampled,
             )
         else:
             consistency_pass_dict = {}
@@ -250,12 +223,11 @@ class SlotMLPEncoder(torch.nn.Module):
         in_channels: int,
         n_slots: int,
         n_slot_latents: int,
-        dataset_name: str,
     ) -> None:
         super(SlotMLPEncoder, self).__init__()
         self.n_slots = n_slots
         self.n_slot_latents = n_slot_latents
-        self.encoder = SlotEncoder(in_channels, n_slots, n_slot_latents, dataset_name)
+        self.encoder = SlotEncoder(in_channels, n_slots, n_slot_latents)
         self.model_name = "SlotMLPEncoder"
 
     def forward(self, x):

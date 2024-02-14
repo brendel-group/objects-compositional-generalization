@@ -404,8 +404,6 @@ def train_models(
         shuffle=True,
     )
 
-    if verbose > 0:
-        print("Fitting on-diagonal model.")
     model_ondiagonal.train()
     train_ondiagonal_model(
         train_loader_ondiagonal,
@@ -449,8 +447,6 @@ def train_models(
     train_loader_offdiagonal = get_offdiagonal_loader(train_loader_ondiagonal_clean)
     val_loader_offdiagonal = get_offdiagonal_loader(val_loader)
 
-    if verbose > 0:
-        print("Fitting off-diagonal model.")
     model_offdiagonal.train()
     train_offdiagonal_model(
         train_loader_offdiagonal,
