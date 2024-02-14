@@ -186,3 +186,26 @@ def sample_diagonal(
             raise ValueError(f"Latent type {l_type} not supported.")
         i += 1
     return z_out
+
+
+def sample_latents(
+    n_samples: int,
+    n_slots: int,
+    cfg: Config,
+    sample_mode: str = "random",
+    delta: float = 1,
+) -> torch.Tensor:
+    assert 0 < delta <= 1, "Delta must be in (0, 1]."
+
+    n_latents = cfg.get_total_latent_dim
+    if sample_mode == "random":
+        z = sample_random(cfg, n_samples, n_slots, n_latents)
+    elif sample_mode == "diagonal":
+        z = sample_diagonal(cfg, n_samples, n_slots, n_latents, delta, mode="diagonal")
+    elif sample_mode == "off_diagonal":
+        z = sample_diagonal(
+            cfg, n_samples, n_slots, n_latents, delta, mode="off_diagonal"
+        )
+    else:
+        raise ValueError(f"Sample mode {sample_mode} not supported.")
+    return z

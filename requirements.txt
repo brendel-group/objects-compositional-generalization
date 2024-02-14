@@ -7,14 +7,11 @@ pandas
 scipy
 wandb
 tqdm
-hydra-core
 lion-pytorch
 matplotlib
 seaborn
 scikit-learn
 seaborn
 Pillow==9.5.0
-dm-env
-hydra-core
-spiteworld
 git+https://github.com/kotekjedi/spriteworld_legacy.git
+dm_env

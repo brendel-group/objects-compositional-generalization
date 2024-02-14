@@ -2,7 +2,7 @@ version: '3.8'
 
 services:
   notebooks:
-    image: object_centric_paper
+    image: object_centric_ood
     ports:
       - "8889:8888"
     volumes:

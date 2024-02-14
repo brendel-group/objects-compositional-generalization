@@ -6,7 +6,7 @@ import torch
 
 def sample_z_from_latents(latents: torch.Tensor, n_samples: int = 64):
     """
-    Sample "delusional" z samples from latents.
+    Sample imaginable latents combinations z from infered latents.
 
     Args:
         latents: tensor of shape (batch_size, n_slots, n_latents)
