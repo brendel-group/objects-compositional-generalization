@@ -28,7 +28,7 @@ Or, alternatively, you can use Docker:
 
 Build and run a Docker container using the provided Dockerfile:
    ```bash
-   docker build -t your-docker-image-name .
+   docker build -t object_centric_ood .
    docker-compose up
    ```
 
@@ -36,9 +36,9 @@ Build and run a Docker container using the provided Dockerfile:
 
 ## Data Generation
 
-For understanding how the data is look like and play with the data generation, please refer to the [Dataset Example](notebooks/Sprite-World Dataset Example.ipynb) notebook.
+🔗 For understanding how the data is look like and play with the data generation, please refer to the `notebooks/Sprite-World Dataset Example.ipynb` notebook.
 
-For the actual data generation, please refer to the [Data Generation](notebooks/Data Generation.ipynb) notebook.
+🔗 For the actual data generation, please refer to the `notebooks/Data Generation.ipynb` notebook.
 
 
 ## Training and Evaluation
