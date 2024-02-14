@@ -3,28 +3,6 @@ import os
 import torch
 import tqdm
 
-# data should ook like this:
-# data_path
-# └── dsprites
-#    ├── train
-#    │   └── diagonal
-#    │       ├── images
-#    │       │   └── images.pt
-#    │       └── latents
-#    │           └── latents.pt
-#    └── test
-#        ├── diagonal
-#        │   ├── images
-#        │   │   └── images.pt
-#        │   └── latents
-#        │       └── latents.pt
-#        └── no_overlap_off_diagonal
-#            ├── images
-#            │   └── images.pt
-#            └── latents
-#                └── latents.pt
-#
-
 
 def dump_generated_dataset(dataset: torch.utils.data.TensorDataset, path: str):
     """Dumps generated dataset as torch tensors to a directory."""
@@ -139,7 +117,7 @@ def collate_fn_normalizer(batch, bias=0, scale=1, mixed=False, device="cpu"):
     return torch.stack(images).to(device), latents.to(device)
 
 
-def filter_objects(latents, max_objects=5000, threshold=0.2, sort=False):
+def filter_objects(latents, max_samples=5000, threshold=0.2, sort=False):
     """
     Filter objects based on their Euclidean distance.
     Args:
@@ -156,7 +134,7 @@ def filter_objects(latents, max_objects=5000, threshold=0.2, sort=False):
         slots_distances = torch.cdist(latents[n, :, :2], latents[n, :, :2], p=2)
         slots_distances.fill_diagonal_(float("inf"))  # Ignore distance to self
 
-        # Consider an object as "close" if its minimal distance to any other object is below the threshold
+        # Only keep samples in which no two objects are closer than the threshold
         min_distance = slots_distances.min().item()
         if min_distance >= threshold:
             mask[n] = True
@@ -167,24 +145,12 @@ def filter_objects(latents, max_objects=5000, threshold=0.2, sort=False):
         return None, []
 
     # Apply the mask to the latents
-    filtered_objects = latents[mask]
+    filtered_samples = latents[mask]
     filtered_indices = torch.arange(N)[mask]
 
-    # If the number of filtered objects exceeds the maximum, truncate them
-    if filtered_objects.size(0) > max_objects:
-        filtered_objects = filtered_objects[:max_objects]
-        filtered_indices = filtered_indices[:max_objects]
+    # If the number of filtered samples exceeds the maximum, truncate them
+    if filtered_samples.size(0) > max_samples:
+        filtered_samples = filtered_samples[:max_samples]
+        filtered_indices = filtered_indices[:max_samples]
 
-    if sort:
-        # Sort the filtered objects by minimum distance to any other object
-        min_distances = torch.zeros(mask.sum().item())
-        for i, n in enumerate(torch.where(mask)[0]):
-            slots_distances = torch.cdist(latents[n], latents[n], p=2)
-            slots_distances.fill_diagonal_(float("inf"))
-            min_distances[i] = slots_distances.min().item()
-
-        indices = torch.argsort(min_distances)
-        filtered_objects = filtered_objects[indices]
-        filtered_indices = filtered_indices[indices]
-
-    return filtered_objects, filtered_indices.tolist()
+    return filtered_samples, filtered_indices.tolist()

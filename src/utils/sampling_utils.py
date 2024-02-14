@@ -1,10 +1,14 @@
 """
 Main sampling functions for dataset generation.
-Note that delta_in_code = delta_in_paper * 2. 
+Note that delta in this code is a distance from the diagonal in the latent space.
+However, in the paper delta describes the width of the band around the diagonal, 
+meaning that 2 * delta_in_code = delta_in_paper.
 
 """
+
 import numpy as np
 import torch
+
 from src.datasets.configs import Config
 
 

@@ -36,6 +36,9 @@ Build and run a Docker container using the provided Dockerfile:
 
 ## Data Generation
 
-For understanding how the data is look like and play with the data generation, please refer to the [Dataset Example](notebooks/Sprite-World Dataset Example.ipynb ) notebook.
+For understanding how the data is look like and play with the data generation, please refer to the [Dataset Example](notebooks/Sprite-World Dataset Example.ipynb) notebook.
+
+For the actual data generation, please refer to the [Data Generation](notebooks/Data Generation.ipynb) notebook.
+
 
 ## Training and Evaluation
