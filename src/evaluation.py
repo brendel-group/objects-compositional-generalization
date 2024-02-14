@@ -4,14 +4,15 @@ import os
 import torch
 from torch.func import jacfwd
 
-import src
 import src.metrics as metrics
-from src.datasets import utils as data_utils
+from src.datasets import wrappers
 from src.models import base_models, slot_attention
 from src.utils import training_utils
 
 
-def load_model_and_hook(path, model_name, softmax=True, sampling=True):
+def load_model_and_hook(
+    path, model_name, num_slots, n_slot_latents, softmax=True, sampling=True
+):
     # Load the checkpoint
     checkpoint = torch.load(path)
 
@@ -19,29 +20,26 @@ def load_model_and_hook(path, model_name, softmax=True, sampling=True):
     if model_name == "SlotAttention":
         encoder = slot_attention.SlotAttentionEncoder(
             resolution=(64, 64),
-            hid_dim=16,
+            hid_dim=n_slot_latents,
             ch_dim=32,
-            dataset_name="dsprites",
         )
         decoder = slot_attention.SlotAttentionDecoder(
-            hid_dim=16,
+            hid_dim=n_slot_latents,
             ch_dim=32,
             resolution=(64, 64),
-            dataset_name="dsprites",
         )
         model = slot_attention.SlotAttentionAutoEncoder(
             encoder=encoder,
             decoder=decoder,
-            num_slots=2,
+            num_slots=num_slots,
             num_iterations=3,
-            hid_dim=16,
-            dataset_name="dsprites",
+            hid_dim=n_slot_latents,
             sampling=sampling,
             softmax=softmax,
         )
         decoder_hook = model.decode
     elif model_name == "SlotMLPAdditive":
-        model = base_models.SlotMLPAdditive(3, 2, 16)
+        model = base_models.SlotMLPAdditive(3, num_slots, n_slot_latents)
         decoder_hook = model.decoder
     else:
         raise ValueError("Invalid model name")
@@ -58,7 +56,7 @@ def cast_models_to_cuda(models):
         model.cuda()
 
 
-def calculate_contrast(out, decoder_hook):
+def calculate_contrast(out, decoder_hook, n_slot_latents):
     """
     Calculate the contrast score
     """
@@ -67,12 +65,12 @@ def calculate_contrast(out, decoder_hook):
     jac = jacfwd(decoder_hook)(latents)
     jac_right = jac[0].flatten(1, 4).flatten(2, 3)  # taking the reconstruction jacobian
 
-    (_, _, weighted_comp) = metrics.compositional_contrast(jac_right, 16)
+    (_, _, weighted_comp) = metrics.compositional_contrast(jac_right, n_slot_latents)
 
     return weighted_comp.detach().cpu().numpy()
 
 
-def calculate_identifiability(id_loader, ood_loader, model):
+def calculate_identifiability(id_loader, ood_loader, model, device):
     """
     Calculate the identifiability score
     """
@@ -81,7 +79,7 @@ def calculate_identifiability(id_loader, ood_loader, model):
         id_loader,
         ood_loader,
         [2],
-        "cuda",
+        device,
     )
     return id_score_id, id_score_ood
 
@@ -106,22 +104,25 @@ def calculate_image_mse(images, out):
     return mse.detach().cpu().numpy()
 
 
-def calculate_encoder_consistency(out):
+def calculate_encoder_consistency(out, device):
     """
     Calculate the encoder consistency score
     """
     consistency_encoder_loss, _ = metrics.hungarian_slots_loss(
         out["sampled_latents"],
         out["predicted_sampled_latents"],
-        "cuda",
+        device,
     )
     return consistency_encoder_loss.detach().cpu().numpy()
 
 
-def calculate_ari(images, out):
-    true_figures = images[:, :-1, ...].cuda()
-    images = images[:, -1, ...].cuda()
+def calculate_ari(images, out, device):
+    """
+    Calculate the ari score
+    """
 
+    true_figures = images[:, :-1, ...].to(device)
+    images = images[:, -1, ...].to(device)
     true_masks = training_utils.get_masks(images, true_figures)
     ari_score = metrics.ari(
         true_masks,
@@ -131,7 +132,7 @@ def calculate_ari(images, out):
 
 
 def evaluate(
-    data_path,
+    dataset_path,
     n_slots,
     mixed,
     model_name,
@@ -141,10 +142,13 @@ def evaluate(
     sample_mode_test_id,
     sample_mode_test_ood,
     batch_size,
+    num_slots,
+    n_slot_latents,
+    device="cuda",
 ):
-    data_path = os.path.join(data_utils.data_path, "dsprites")
+    data_path = os.path.join(dataset_path, "dsprites")
 
-    wrapper = src.datasets.wrappers.get_wrapper(
+    wrapper = wrappers.get_wrapper(
         "dsprites",
         path=data_path,
     )
@@ -167,12 +171,18 @@ def evaluate(
     models = []
     hooks = []
     model, decoder_hook = load_model_and_hook(
-        model_path, model_name, softmax=softmax, samplig=sampling
+        model_path,
+        model_name,
+        num_slots,
+        n_slot_latents,
+        softmax=softmax,
+        sampling=sampling,
     )
     models.append(model)
     hooks.append(decoder_hook)
 
-    cast_models_to_cuda(model)
+    if device == "cuda":
+        cast_models_to_cuda(models)
 
     id_id_scores = []
     ood_id_scores = []
@@ -193,7 +203,7 @@ def evaluate(
     for model, hook in zip(models, hooks):
         # mean id scores
         id_id_score, ood_id_score = calculate_identifiability(
-            id_loader, ood_loader, model
+            id_loader, ood_loader, model, device
         )
 
         id_r2, ood_r2 = 0, 0
@@ -203,29 +213,35 @@ def evaluate(
         id_contrast, ood_contrast = 0, 0
 
         for i, (id_batch, ood_batch) in enumerate(zip(id_loader, ood_loader)):
-            id_images, _ = id_batch
-            id_images = id_images[:, -1, ...].cuda()  # taking the last image
+            id_images_figures, _ = id_batch
+            id_images = id_images_figures[:, -1, ...].to(
+                device
+            )  # taking the last image
 
-            ood_images, _ = ood_batch
-            ood_images = ood_images[:, -1, ...].cuda()  # taking the last image
+            ood_images_figures, _ = ood_batch
+            ood_images = ood_images_figures[:, -1, ...].to(
+                device
+            )  # taking the last image
 
             id_out = model(id_images)
             ood_out = model(ood_images)
 
-            id_contrast += calculate_contrast(id_out, hook)
-            ood_contrast += calculate_contrast(ood_out, hook)
+            if model_name == "SlotMLPAdditive":
+                id_contrast += calculate_contrast(id_out, hook, n_slot_latents)
+                ood_contrast += calculate_contrast(ood_out, hook, n_slot_latents)
 
             id_r2 += calculate_image_r2(id_images, id_out)
             ood_r2 += calculate_image_r2(ood_images, ood_out)
 
-            id_consistency += calculate_encoder_consistency(id_out).mean()
-            ood_consistency += calculate_encoder_consistency(ood_out).mean()
+            id_consistency += calculate_encoder_consistency(id_out, device).mean()
+            ood_consistency += calculate_encoder_consistency(ood_out, device).mean()
 
             id_mse += calculate_image_mse(id_images, id_out)
             ood_mse += calculate_image_mse(ood_images, ood_out)
 
-            id_ari_score += calculate_ari(id_images, id_out)
-            ood_ari_score += calculate_ari(ood_images, ood_out)
+            if model_name == "SlotAttention":
+                id_ari_score += calculate_ari(id_images_figures, id_out, device)
+                ood_ari_score += calculate_ari(ood_images_figures, ood_out, device)
 
         id_contrasts.append(id_contrast * batch_size / n_samples_test_id)
         ood_contrasts.append(ood_contrast * batch_size / n_samples_test_ood)
@@ -295,7 +311,7 @@ if __name__ == "__main__":
         "--model_path",
         type=str,
         default="models",
-        help="Path to the model folder.",
+        help="Path to the saved checkpoint.",
     )
     parser.add_argument(
         "--softmax",
@@ -327,6 +343,18 @@ if __name__ == "__main__":
         type=int,
         default=64,
         help="Batch size to use.",
+    )
+    parser.add_argument(
+        "--num_slots",
+        type=int,
+        default=2,
+        help="Number of slots.",
+    )
+    parser.add_argument(
+        "--n_slot_latents",
+        type=int,
+        default=16,
+        help="Number of latents.",
     )
 
     args = parser.parse_args()

@@ -48,7 +48,7 @@ Build and run a Docker container using the provided Dockerfile:
 To train the model, run the following command:
 
 ```bash
-python train.py --dataset_path "/path/from/previous/step" --model_name "SlotAttention" --num_slots 2 --epochs 400 --use_consistency_loss True
+python main.py --dataset_path "/path/from/previous/step" --model_name "SlotAttention" --num_slots 2 --epochs 400 --use_consistency_loss True
 ```
 
 For complete details on the parameters, please refer to the `main.py` file.
@@ -63,17 +63,17 @@ You can find some example commands for training below:
 
       Training vanilla SlotAttention with 2 slots:
       ```bash
-      python train.py --dataset_path "/path/from/previous/step" --model_name "SlotAttention" --num_slots 2 --use_consistency_loss False
+      python main.py --dataset_path "/path/from/previous/step" --model_name "SlotAttention" --num_slots 2 --use_consistency_loss False
       ```
 
       Training vanilla SlotAttention with 2 slots and consistency loss:
       ```bash
-      python train.py --dataset_path "/path/from/previous/step" --model_name "SlotAttention" --num_slots 2 --use_consistency_loss True --consistency_ignite_epoch 150
+      python main.py --dataset_path "/path/from/previous/step" --model_name "SlotAttention" --num_slots 2 --use_consistency_loss True --consistency_ignite_epoch 150
       ```
 
       Training SlotAttention with 2 slots, fixed SoftMax and sampling:
       ```bash
-      python train.py --dataset_path "/path/from/previous/step" --model_name "SlotAttention" --num_slots 2 --use_consistency_loss True --consistency_ignite_epoch 150 --softmax False --sampling False
+      python main.py --dataset_path "/path/from/previous/step" --model_name "SlotAttention" --num_slots 2 --use_consistency_loss True --consistency_ignite_epoch 150 --softmax False --sampling False
       ```
    </details>
 
@@ -82,12 +82,12 @@ You can find some example commands for training below:
 
       Training vanilla autoencoder with 2 slots:
       ```bash
-      python train.py --dataset_path "/path/from/previous/step" --model_name "SlotMLPAdditive" --epochs 300 --num_slots 2 -n_slot_latents 6 --use_consistency_loss False
+      python main.py --dataset_path "/path/from/previous/step" --model_name "SlotMLPAdditive" --epochs 300 --num_slots 2 -n_slot_latents 6 --use_consistency_loss False
       ```
 
       Training vanilla autoencoder with 2 slots and consistency loss:
       ```bash
-      python train.py --dataset_path "/path/from/previous/step" --model_name "SlotMLPAdditive" --epochs 300 --num_slots 2 -n_slot_latents 6 --use_consistency_loss True --consistency_ignite_epoch 100
+      python main.py --dataset_path "/path/from/previous/step" --model_name "SlotMLPAdditive" --epochs 300 --num_slots 2 -n_slot_latents 6 --use_consistency_loss True --consistency_ignite_epoch 100
       ```
 
 
@@ -96,3 +96,10 @@ You can find some example commands for training below:
 </details>
 
 ### Evaluation
+
+Evaluation can be done using the `evaluate.py` script and closely follows the procedure and metrics used in training script. The main difference in calculating the compositional contrast (note: it might cause OOM issues, thus is calculated only for AE model).
+
+Here is an example command for evaluation:
+```bash
+python src/evaluation.py --dataset_path "/path/from/previous/step" --model_path "checkpoints/SlotMLPAdditive.pt" --model_name "SlotMLPAdditive" --n_slot_latents 6
+```
