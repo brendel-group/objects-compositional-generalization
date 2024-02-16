@@ -114,12 +114,12 @@ python src/evaluation.py --dataset_path "/path/from/previous/step" --model_path 
 ## Citation
 If you make use of this code in your own work, please cite our paper:
 ```bibtex
-@misc{wiedemer2023provable,
-      title={Provable Compositional Generalization for Object-Centric Learning}, 
-      author={Thaddäus Wiedemer and Jack Brady and Alexander Panfilov and Attila Juhos and Matthias Bethge and Wieland Brendel},
-      year={2023},
-      eprint={2310.05327},
-      archivePrefix={arXiv},
-      primaryClass={cs.LG}
+@inproceedings{
+wiedemer2024provable,
+title={Provable Compositional Generalization for Object-Centric Learning},
+author={Thadd{\"a}us Wiedemer and Jack Brady and Alexander Panfilov and Attila Juhos and Matthias Bethge and Wieland Brendel},
+booktitle={The Twelfth International Conference on Learning Representations},
+year={2024},
+url={https://openreview.net/forum?id=7VPTUWkiDQ}
 }
 ```
