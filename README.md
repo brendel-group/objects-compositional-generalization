@@ -2,6 +2,16 @@
 # Provable Compositional Generalization for Object-Centric Learning [ICLR 2024]
 Official code for the paper **Provable Compositional Generalization for Object-Centric Learning** ([openreview](https://openreview.net/forum?id=7VPTUWkiDQ), [arXiv](https://arxiv.org/abs/2310.05327)).
 
+We formalize compositional generalization as an identifiability problem for a latent variable model where objects are represented by latent slots. Here, compositional generalization requires two things:
+
+1. Identifying the ground-truth latent slots in-distribution (blue).
+2. Generalizing this behavior to unseen, out-of-distribution slot combinations (grey).
+
+
+![Overview](assets/fig1_v12.png)
+
+From an empirical side, the main contribution is the _compositional consisteny loss_ outlined below:
+
 ![Problem Setup](assets/fig3_v6.png)
 
 ## Environment Setup
