@@ -1,0 +1,41 @@
+cff-version: 1.2.0
+message: "If you use this repository in your research, please cite it as below."
+authors:
+- family-names: "Wiedemer"
+  given-names: "Thaddäus"
+  orcid: "https://orcid.org/0009-0003-6280-0804"
+- family-names: "Brady"
+  given-names: "Jack"
+- family-names: "Panfilov"
+  given-names: "Alexander"
+- family-names: "Juhos"
+  given-names: "Attila"
+- family-names: "Bethge"
+  given-names: "Matthias"
+- family-names: "Brendel"
+  given-names: "Wieland"
+title: "My Research Software"
+version: 1.0.0
+doi: 10.5281/zenodo.1234
+date-released: 2024.02.19
+url: "https://github.com/brendel-group/objects-compositional-generalization"
+preferred-citation:
+  type: conference-paper
+  authors:
+  - family-names: "Wiedemer"
+    given-names: "Thaddäus"
+    orcid: "https://orcid.org/0009-0003-6280-0804"
+  - family-names: "Brady"
+    given-names: "Jack"
+  - family-names: "Panfilov"
+    given-names: "Alexander"
+  - family-names: "Juhos"
+    given-names: "Attila"
+  - family-names: "Bethge"
+    given-names: "Matthias"
+  - family-names: "Brendel"
+    given-names: "Wieland"
+  url: "https://openreview.net/forum?id=7VPTUWkiDQ"
+  journal: "The Twelfth International Conference on Learning Representations"
+  title: "Provable Compositional Generalization for Object-Centric Learning"
+  year: 2024
