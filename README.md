@@ -1,6 +1,6 @@
 
 # Provable Compositional Generalization for Object-Centric Learning [ICLR 2024]
-Official code for the paper [Provable Compositional Generalization for Object-Centric Learning](https://arxiv.org/abs/2310.05327).
+Official code for the paper **Provable Compositional Generalization for Object-Centric Learning** ([openreview](https://openreview.net/forum?id=7VPTUWkiDQ), [arXiv](https://arxiv.org/abs/2310.05327)).
 
 ![Problem Setup](assets/fig3_v6.png)
 
@@ -10,7 +10,7 @@ This code was tested for Python 3.10.
 You can start by cloning the repository:
 
 ```bash
-git clone https://github.com/kotekjedi/object_centric_ood.git
+git clone git@github.com:brendel-group/objects-compositional-generalization.git
 cd object_centric_ood
 ```
 
@@ -114,12 +114,18 @@ python src/evaluation.py --dataset_path "/path/from/previous/step" --model_path 
 ## Citation
 If you make use of this code in your own work, please cite our paper:
 ```bibtex
-@inproceedings{
-    wiedemer2024provable,
+@inproceedings{wiedemer2024provable,
     title={Provable Compositional Generalization for Object-Centric Learning},
     author={Thadd{\"a}us Wiedemer and Jack Brady and Alexander Panfilov and Attila Juhos and Matthias Bethge and Wieland Brendel},
     booktitle={The Twelfth International Conference on Learning Representations},
     year={2024},
     url={https://openreview.net/forum?id=7VPTUWkiDQ}
+}
+
+@article{wiedemer2023provable,
+  title={Provable Compositional Generalization for Object-Centric Learning},
+  author={Wiedemer, Thadd{\"a}us and Brady, Jack and Panfilov, Alexander and Juhos, Attila and Bethge, Matthias and Brendel, Wieland},
+  journal={arXiv preprint arXiv:2310.05327},
+  year={2023}
 }
 ```
