@@ -36,6 +36,6 @@ preferred-citation:
   - family-names: "Brendel"
     given-names: "Wieland"
   url: "https://openreview.net/forum?id=7VPTUWkiDQ"
-  journal: "The Twelfth International Conference on Learning Representations"
+  collection-title: "The Twelfth International Conference on Learning Representations"
   title: "Provable Compositional Generalization for Object-Centric Learning"
   year: 2024
