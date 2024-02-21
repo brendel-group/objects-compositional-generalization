@@ -21,7 +21,7 @@ You can start by cloning the repository:
 
 ```bash
 git clone git@github.com:brendel-group/objects-compositional-generalization.git
-cd object_centric_ood
+cd objects-compositional-generalization
 ```
 
 Then, set up your environment by choosing one of the following methods:
@@ -63,7 +63,7 @@ To train the model, run the following command:
 python src/main.py --dataset_path "/path/from/previous/step" --model_name "SlotAttention" --num_slots 2 --epochs 400 --use_consistency_loss True
 ```
 
-For complete details on the parameters, please refer to the `src/main.py` file.
+For complete details on the parameters, please refer to the `main.py` file.
 
 You can find some example commands for training below:
 
@@ -75,17 +75,17 @@ You can find some example commands for training below:
 
   Training vanilla SlotAttention with 2 slots:
   ```bash
-  python src/main.py --dataset_path "/path/from/previous/step" --model_name "SlotAttention" --num_slots 2 --use_consistency_loss False
+  python main.py --dataset_path "/path/from/previous/step" --model_name "SlotAttention" --num_slots 2 --use_consistency_loss False
   ```
 
   Training vanilla SlotAttention with 2 slots and consistency loss:
   ```bash
-  python src/main.py --dataset_path "/path/from/previous/step" --model_name "SlotAttention" --num_slots 2 --use_consistency_loss True --consistency_ignite_epoch 150
+  python main.py --dataset_path "/path/from/previous/step" --model_name "SlotAttention" --num_slots 2 --use_consistency_loss True --consistency_ignite_epoch 150
   ```
 
   Training SlotAttention with 2 slots, fixed SoftMax and sampling:
   ```bash
-  python src/main.py --dataset_path "/path/from/previous/step" --model_name "SlotAttention" --num_slots 2 --use_consistency_loss True --consistency_ignite_epoch 150 --softmax False --sampling False
+  python .py --dataset_path "/path/from/previous/step" --model_name "SlotAttention" --num_slots 2 --use_consistency_loss True --consistency_ignite_epoch 150 --softmax False --sampling False
   ```
 </details>
 
@@ -94,12 +94,12 @@ You can find some example commands for training below:
 
   Training vanilla autoencoder with 2 slots:
   ```bash
-  python src/main.py --dataset_path "/path/from/previous/step" --model_name "SlotMLPAdditive" --epochs 300 --num_slots 2 -n_slot_latents 6 --use_consistency_loss False
+  python main.py --dataset_path "/path/from/previous/step" --model_name "SlotMLPAdditive" --epochs 300 --num_slots 2 -n_slot_latents 6 --use_consistency_loss False
   ```
 
   Training vanilla autoencoder with 2 slots and consistency loss:
   ```bash
-  python src/main.py --dataset_path "/path/from/previous/step" --model_name "SlotMLPAdditive" --epochs 300 --num_slots 2 -n_slot_latents 6 --use_consistency_loss True --consistency_ignite_epoch 100
+  python main.py --dataset_path "/path/from/previous/step" --model_name "SlotMLPAdditive" --epochs 300 --num_slots 2 -n_slot_latents 6 --use_consistency_loss True --consistency_ignite_epoch 100
   ```
 
 </details>
