@@ -60,7 +60,7 @@ docker-compose up
 To train the model, run the following command:
 
 ```bash
-python src/main.py --dataset_path "/path/from/previous/step" --model_name "SlotAttention" --num_slots 2 --epochs 400 --use_consistency_loss True
+python main.py --dataset_path "/path/from/previous/step" --model_name "SlotAttention" --num_slots 2 --epochs 400 --use_consistency_loss True
 ```
 
 For complete details on the parameters, please refer to the `main.py` file.
@@ -85,7 +85,7 @@ You can find some example commands for training below:
 
   Training SlotAttention with 2 slots, fixed SoftMax and sampling:
   ```bash
-  python .py --dataset_path "/path/from/previous/step" --model_name "SlotAttention" --num_slots 2 --use_consistency_loss True --consistency_ignite_epoch 150 --softmax False --sampling False
+  python main.py --dataset_path "/path/from/previous/step" --model_name "SlotAttention" --num_slots 2 --use_consistency_loss True --consistency_ignite_epoch 150 --softmax False --sampling False
   ```
 </details>
 
