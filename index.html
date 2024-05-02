@@ -1,0 +1,396 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <!-- Required meta tags -->
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+
+    <!-- Primary Meta Tags -->
+    <title>Provable Compositional Generalization for Object-Centric Learning</title>
+    <meta name="title" content="Provable Compositional Generalization for Object-Centric Learning">
+    <meta name="description"
+        content="Learning representations that generalize to novel compositions of known concepts is crucial for bridging the gap between human and machine perception. One prominent effort is learning object-centric representations, which are widely conjectured to enable compositional generalization. Yet, it remains unclear when this conjecture will be true, as a principled theoretical or empirical understanding of compositional generalization is lacking. In this work, we investigate when compositional generalization is guaranteed for object-centric representations through the lens of identifiability theory. We show that autoencoders that satisfy structural assumptions on the decoder and enforce encoder-decoder consistency will learn object-centric representations that provably generalize compositionally. We validate our theoretical result and highlight the practical relevance of our assumptions through experiments on synthetic image data.">
+    
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://brendel-group.github.io/objects-compositional-generalization">
+    <meta property="og:title" content="Provable Compositional Generalization for Object-Centric Learning">
+    <meta property="og:description"
+        content="Learning representations that generalize to novel compositions of known concepts is crucial for bridging the gap between human and machine perception. One prominent effort is learning object-centric representations, which are widely conjectured to enable compositional generalization. Yet, it remains unclear when this conjecture will be true, as a principled theoretical or empirical understanding of compositional generalization is lacking. In this work, we investigate when compositional generalization is guaranteed for object-centric representations through the lens of identifiability theory. We show that autoencoders that satisfy structural assumptions on the decoder and enforce encoder-decoder consistency will learn object-centric representations that provably generalize compositionally. We validate our theoretical result and highlight the practical relevance of our assumptions through experiments on synthetic image data.">
+    <meta property="og:image" content="https://brendel-group.github.io/objects-compositional-generalization/img/intro.svg">
+
+    <!-- Twitter -->
+    <meta property="twitter:card" content="summary_large_image">
+    <meta property="twitter:url" content="https://brendel-group.github.io/objects-compositional-generalization">
+    <meta property="twitter:title" content="Provable Compositional Generalization for Object-Centric Learning">
+    <meta property="twitter:description"
+        content="Learning representations that generalize to novel compositions of known concepts is crucial for bridging the gap between human and machine perception. One prominent effort is learning object-centric representations, which are widely conjectured to enable compositional generalization. Yet, it remains unclear when this conjecture will be true, as a principled theoretical or empirical understanding of compositional generalization is lacking. In this work, we investigate when compositional generalization is guaranteed for object-centric representations through the lens of identifiability theory. We show that autoencoders that satisfy structural assumptions on the decoder and enforce encoder-decoder consistency will learn object-centric representations that provably generalize compositionally. We validate our theoretical result and highlight the practical relevance of our assumptions through experiments on synthetic image data.">
+    <meta property="twitter:image" content="https://brendel-group.github.io/objects-compositional-generalization/img/intro.svg">
+
+    <!-- Bootstrap CSS -->
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.0/css/bootstrap.min.css"
+        integrity="sha384-9aIt2nRpC12Uk9gS9baDl411NQApFmC26EwAOH8WgZl5MYYxFfc+NcPb1dKGj7Sk" crossorigin="anonymous">
+
+    <script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
+    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Condensed&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono&display=swap" rel="stylesheet">
+
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.13.1/css/all.min.css" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/2.9.3/Chart.min.js"></script>
+
+    <style>
+        .main {
+            font-family: 'IBM Plex Sans Condensed', sans-serif;
+        }
+
+        .code {
+            font-family: 'IBM Plex Mono', monospace;
+        }
+
+        h3 {
+            margin-top: 1.0rem; 
+        }
+
+        .row-dense {
+            padding-bottom: 0;
+        }
+
+        .a {
+            color: gainsboro;
+            font-family: 'IBM Plex Sans Condensed', sans-serif;
+        }
+
+        td {
+            padding: 0 15px;
+        }
+
+        p {
+            text-align: justify;
+
+        }
+
+        .collapse-container {
+            text-align: center;
+            position: relative;
+
+        }
+
+        .collapse-container #moreless.collapsed:after {
+            content: '+ Show More';
+        }
+
+        .collapse-container #moreless:not(.collapsed):after {
+            content: '- Show Less';
+        }
+
+        .collapse-container .collapse.collapse:not(.show) {
+            display: block;
+            /* height = lineheight * no of lines to display */
+            height: 7.7em;
+            overflow: hidden;
+        }
+
+        .collapse-container .collapse.collapse:not(.show):before {
+            content: '';
+            width: 100%;
+            height: 7.7em;
+            position: absolute;
+            left: 0;
+            top: 0;
+            background: linear-gradient(rgba(255, 255, 255, 0), 60px, white);
+        }
+
+        .collapse-container .collapse.collapsing {
+            height: 7.7em;
+        }
+    </style>
+
+    <title>Provable Compositional Generalization for Object-Centric Learning</title>
+</head>
+
+<body>
+    <div class="container main">
+        <div class="row">
+            <div class="col-sm-2">
+            </div>
+            <div class="col-sm-8" id="main-content">
+                <div class="row text-center my-5" id="#">
+                    <h1>Provable Compositional Generalization for Object-Centric Learning</h1>
+                </div>
+
+                <!-- Begin author list-->
+                <div class="row text-center mb-4">
+                    <div class="col-sm-4 mb-4">
+                        Thaddäus Wiedemer*
+                        <a href="mailto:thaddaeus.wiedemer@gmail.com"><i class="far fa-envelope"></i></a>
+                        <!-- <a href="https://rzimmermann.com" target="_blank"><i class="fas fa-link"></i></a></br> -->
+                        MPI-IS, University of Tübingen
+                    </div>
+                    <div class="col-sm-4 mb-4">
+                        Jack Brady*
+                        <a href="mailto:jack.brady@tuebingen.mpg.de"><i class="far fa-envelope"></i></a><br>
+                        MPI-IS
+                    </div>
+                    <div class="col-sm-4 mb-4">
+                        Alexander Panfilov*
+                        <a href="mailto:kotekjedi@gmail.com"><i class="far fa-envelope"></i></a><br>
+                        University of Tübingen
+                    </div>
+                    <div class="col-sm-4 mb-4">
+                        Attila Juhos*
+                        <a href="mailto:attila.juhos@tuebingen.mpg.de"><i class="far fa-envelope"></i></a><br>
+                        MPI-IS
+                    </div>
+                    <div class="col-sm-4 mb-4">
+                        Matthias Bethge
+                        <a href="mailto:matthias@bethgelab.org"><i class="far fa-envelope"></i></a><br>
+                        University of Tübingen, Tübingen AI Center
+                    </div>
+                    <div class="col-sm-4 mb-4">
+                        Wieland Brendel
+                        <a href="mailto:wieland.brendel@tue.mpg.de"><i class="far fa-envelope"></i></a><br>
+                        MPI-IS, ELLIS Institute Tübingen
+                    </div>
+                </div>
+                <!-- End author list-->
+
+                <div class="row text-center">
+                    <div class="col-sm-4 mb-4">
+                        <h4>
+                            <a href="https://arxiv.org/abs/2310.05327" target="_blank">
+                                <i class="fas fa-file-alt"></i>
+                                Paper
+                            </a>
+                        </h4>
+                    </div>
+                    <div class="col-sm-4 mb-4">
+                        <h4>
+                            <a href="https://github.com/brendel-group/objects-compositional-generalization" target="_blank">
+                                <i class="fab fa-github"></i>
+                                Code
+                            </a>
+                        </h4>
+                    </div>
+                    <!-- <div class="col-sm-4 mb-4">
+                        <h4>
+                            <a href="https://zenodo.org/record/8131197" target="_blank">
+                                <i class="far fa-chart-bar"></i>
+                                Data
+                            </a>
+                        </h4>
+                    </div> -->
+                </div>
+
+                <div class="row text-center">
+                    <p>
+                        <b>tl;dr:</b>
+                        <span class="text-muted">
+                            We show theoretical conditions under which compositional generalization is guaranteed for object-centric representation learning.
+                        </span>
+                    </p>
+                </div>
+
+                <div class="row mt-2">
+                    <h3>News</h3>
+                </div>
+
+                <div class="row">
+                    <table>
+                        <tr>
+                            <td>
+                                <span class="badge badge-pill badge-primary">Feb '24</span>
+                            </td>
+                            <td>
+                                Our paper was accepted as a <a href="https://openreview.net/forum?id=7VPTUWkiDQ" target="_blank">Oral at ICLR 2024</a>!
+                            </td>
+                        </tr>
+                        <tr>
+                            <td>
+                                <span class="badge badge-pill badge-primary">Oct '23</span>
+                            </td>
+                            <td>
+                                The pre-print is now available on <a href="https://arxiv.org/abs/2310.05327" target="_blank">arXiv</a>.
+                            </td>
+                        </tr>
+                    </table>
+                </div>
+
+                <div class="row mt-2">
+                    <div class="col-12">
+                        <p>
+                        </p>
+                    </div>
+                </div>
+
+                <div class="row mt-2">
+                    <h3>Abstract</h3>
+                </div>
+                <div class="row mt-2">
+                    <div class="col-12 collapse-container">
+                        <p class="collapse" id="abstractText" aria-expanded="false">
+                            Learning representations that generalize to novel compositions of known concepts is crucial for bridging the gap between human and machine perception. One prominent effort is learning object-centric representations, which are widely conjectured to enable compositional generalization. Yet, it remains unclear when this conjecture will be true, as a principled theoretical or empirical understanding of compositional generalization is lacking. In this work, we investigate when compositional generalization is guaranteed for object-centric representations through the lens of identifiability theory. We show that autoencoders that satisfy structural assumptions on the decoder and enforce encoder-decoder consistency will learn object-centric representations that provably generalize compositionally. We validate our theoretical result and highlight the practical relevance of our assumptions through experiments on synthetic image data.
+                        </p>
+                       <a role="button" id="moreless" class="collapsed" data-toggle="collapse" href="#abstractText" aria-expanded="false" aria-controls="abstractText"></a>
+                    </div>
+                </div>
+
+                <div class="row mt-2">
+                    <h3>Motivation</h3>
+                </div>
+                <div class="row mt-2 row-dense">
+                    <div class="col-12">
+                        <p>
+                            Scaling models up both in terms of model and dataset size has fueled a lot of the progress that models have made in terms of performance and robustness. We now ask whether this development has also incidentally led to more interpretable models. To answer this question, we perform a large-scale psychophysics experiment to investigate the interpretability of multiple models through the two most-used mechanistic interpretability methods. However, we do not find any improvement, but rather the opposite: GoogLeNet, from ten years ago, is still more interpretable than eight state-of-the-art vision models!
+                        </p>
+                    </div>
+                </div>
+                <div class="row mt-2">
+                    <div class="col-12">
+                        <div style="text-align: center;">
+                            <img src="img/intro.svg" style="max-width: 700px;" />
+                        </div>
+                        <small class="text-muted">
+                            <p>
+                                We perform a large-scale psychophysics experiment to investigate the interpretability of nine networks through the two most-used mechanistic interpretability methods. We see that scaling has not led to increased interpretability. We release a large dataset called <b>I</b>mageNet <b>M</b>echanistic <b>I</b>nterpretability that contains human interpretability scores. We expect our dataset to enable building automated measures for quantifying the interpretability of models and, thus, bootstrap the development of more interpretable models.
+                            </p>
+                        </small>
+                    </div>
+                </div>
+
+                <div class="row mt-2">
+                    <h3>Has scaling models in terms of their dataset and model size improved interpretability?</h3>
+                </div>
+                <div class="row mt-2 row-dense">
+                    <div class="col-12">
+                        <p>
+                            We leverage the experimental paradigm proposed in <a href="https://bethgelab.github.io/testing_visualizations/" data-toggle="tooltip" title data-original-title="Borowski et al. 2021. Exemplary Natural Images Explain CNN Activations Better than State-of-the-Art Feature Visualizations.">our earlier work</a> to measure the unit-wise interpretabilty afforded by an explanation. In a large-scale psychophysical experiment, we compare models that differ in architecture, training objectives, and training data. While these models reflect the advancements in model design in recent years (sorted by model size first and then dataset size), we surprisingly see little to no effect of these design choices on mechanistic, per-unit interpretability.
+                            While these results might appear promising, since all models yield scores of about 80% (natural), note that we demonstrate that interpretability is far more limited than it first appears and breaks down dramatically as the task is made harder (see Section 4.4 of the paper).
+                        </p>
+                    </div>
+                </div>
+                <div class="col-12">
+                    <div style="text-align: center;">
+                        <img src="img/model_comparison.svg" style="max-width: 550px;" />
+                    </div>
+                    <small class="text-muted">
+                        <p>
+                            We compare the mechanistic interpretability of nine vision models for two interpretability methods: maximally activating dataset samples (natural, orange) and feature visualizations (synthetic, blue).
+                        </p>
+                    </small>
+                </div>
+
+
+                <div class="row mt-2">
+                    <h3>Are better ImageNet classifiers more interpretable?</h3>
+                </div>
+                <div class="row mt-2 row-dense">
+                    <div class="col-12">
+                        <p>
+                            While the investigated models have strongly varying classification performance, as measured by the ImageNet validation accuracy, their interpretability shows less variation for both natural exemplars and synthetic feature visualizations. More accurate classifiers are not necessarily more interpretable. For synthetic feature visualizations, there might even be a regression of interpretability with increasing accuracy. 
+                        </p>
+                    </div>
+                </div>
+                <div class="col-12">
+                    <div style="text-align: center;">
+                        <img src="img/model_accuracy_vs_performance.svg" style="max-width: 350px;" />
+                    </div>
+                    <small class="text-muted">
+                        Higher classification performance does not come with higher interpretability, for neither natural exemplars (orange) nor synthetic feature visualizations (blue).
+                    </small>
+                </div>
+
+
+                <div class="row mt-2">
+                    <h3>ImageNet Mechanistic Interpretability: A new dataset for automated alignment</h3>
+                </div>
+                <div class="row mt-2 row-dense">
+                    <div class="col-12">
+                        <p>
+                            The results above paint a rather disappointing picture of the state of mechanistic interpretability of computer vision models: Just by scaling up models and datasets, we do not get increased interpretability for free, suggesting that if we want this property, we need to <it>explicitly</it> optimize for it.
+                        </p>
+
+                        <p>
+                            To enable research on such automated evaluations, we release our experimental results as a new dataset called <it><b>I</b>mageNet <b>M</b>echanistic <b>I</b>nterpretability</it> (IMI). Note that this is the <it>first</it> dataset containing unit-wise interpretability measurements obtained through psychophysical experiments for multiple explanation methods and models. We hope that this dataset will enable the development of automated interpretability measures that can be used to directly optimize models for mechanistic interpretability.
+                            The <a href="https://zenodo.org/record/8131197" target="_blank">dataset</a> itself should be seen as a collection of labels and meta information without fixed features that should be predictive of a unit's interpretability. Moreover, finding and constructing features that are predictive of the recorded labels will be one of the open challenges posed by this line of research.
+                        </p>
+                    </div>
+                </div>
+
+                <div class="row">
+                    <h3>Acknowledgements & Funding</h3>
+                </div>
+                <div class="row mt-2">
+                    <div class="col-12 collapse-container">
+                        <p class="collapse" id="acknowledgmentsText" aria-expanded="false">
+                            We thank Felix Wichmann, Evgenia Rusak, Robert-Jan Bruintjes, Robert Geirhos, Matthias Kümmerer, and Matthias Tangemann for their valuable feedback.
+                            This work was supported by the German Federal Ministry of Education and Research (BMBF): Tübingen AI Center, FKZ: 01IS18039A. WB acknowledges financial support via an Emmy Noether Grant funded by the German Research Foundation (DFG) under grant no. BR 6382/1-1 and via the Open Philantropy Foundation funded by the Good Ventures Foundation. WB is a member of the Machine Learning Cluster of Excellence, EXC number 2064/1 – Project number 390727645. This research utilized compute resources at the Tübingen Machine Learning Cloud, DFG FKZ INST 37/1057-1 FUGG.
+                            The authors thank the <a href="https://imprs.is.mpg.de/" target="_blank">International Max Planck Research School for Intelligent Systems (IMPRS-IS)</a> for supporting RSZ and TK.
+                        </p>
+                       <a role="button" id="moreless" class="collapsed" data-toggle="collapse" href="#acknowledgmentsText" aria-expanded="false" aria-controls="acknowledgmentsText"></a>
+                    </div>
+                </div>
+                <div class="row">
+                    <h3>BibTeX</h3>
+                </div>
+                <div class="row">
+                    <p>If you find our study or our dataset helpful, please cite our paper:</p>
+                </div>
+                <div class="row justify-content-md-center">
+                    <div class="col-sm-8 rounded p-3 m-2" style="background-color:lightgray;">
+                        <small class="code">
+                            @inproceedings{zimmermann2023scale,<br>
+                            &nbsp;&nbsp;author = { <br>
+                            &nbsp;&nbsp;&nbsp;&nbsp;Zimmermann, Roland S. and<br>
+                            &nbsp;&nbsp;&nbsp;&nbsp;Klein, Thomas and<br>
+                            &nbsp;&nbsp;&nbsp;&nbsp;Brendel, Wieland and<br>
+                            &nbsp;&nbsp;},<br>
+                            &nbsp;&nbsp;title = {<br>
+                            &nbsp;&nbsp;&nbsp;&nbsp;Scale Alone Does not Improve Mechanistic<br>
+                            &nbsp;&nbsp;&nbsp;&nbsp;Interpretability in Vision Models<br>
+                            &nbsp;&nbsp;},<br>
+                            &nbsp;&nbsp;booktitle = { <br>
+                                &nbsp;&nbsp;&nbsp;&nbsp;Thirty-seventh Conference on Neural<br>
+                                &nbsp;&nbsp;&nbsp;&nbsp;Information Processing Systems<br>
+                            &nbsp;&nbsp;},<br>
+                            &nbsp;&nbsp;year = {2023},<br>
+                            }
+                        </small>
+                    </div>
+                </div>
+
+                <div class="row">
+                    <small class="text-muted">Webpage designed using Bootstrap 4.5.</small>
+                    <a href="#" class="ml-auto"><i class="fas fa-sort-up"></i></a>
+                </div>
+
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Optional JavaScript -->
+    <!-- jQuery first, then Popper.js, then Bootstrap JS -->
+    <script src="https://code.jquery.com/jquery-3.5.1.slim.min.js"
+        integrity="sha384-DfXdz2htPH0lsSSs5nCTpuj/zy4C+OGpamoFVy38MVBnE+IbbVYUew+OrCXaRkfj"
+        crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/popper.js@1.16.0/dist/umd/popper.min.js"
+        integrity="sha384-Q6E9RHvbIyZFJoft+2mJbHaEWldlvI9IOYy5n3zV9zzTtmI3UksdQRVvoxMfooAo"
+        crossorigin="anonymous"></script>
+    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.0/js/bootstrap.min.js"
+        integrity="sha384-OgVRvuATP1z7JjHLkuOU7Xw704+h835Lr+6QL9UvYjZE3Ipu6Tp75j7Bh/kR0JKI"
+        crossorigin="anonymous"></script>
+
+    <script>
+        $(function () {
+            $('[data-toggle="tooltip"]').tooltip()
+        })
+    </script>
+
+</body>
+
+</html>
+
+</html>
