@@ -254,8 +254,8 @@
                         <p>
                             We show that if the training set is chosen correctly, if the decoder of the model is additive, and if we train with an additional loss term that we dub <em>compositional consistency loss</em>, the model generalizes compositionally in this sense.
                         </p>
-                        <div style="text-align: center;">
-                            <img src="img/fig1_v12.svg" style="max-width: 700px;" />
+                        <div class="d-flex justify-content-center">
+                            <img src="img/fig1_v12.svg" class="img-fluid" style="max-width: 100%;"/>
                         </div>
                         <small class="text-muted">
                             <p>
@@ -277,8 +277,8 @@
                             We start from a result from <a href="https://brendel-group.github.io/objects-identifiability/" data-toggle="tooltip" title data-original-title="Brady et al. 2023. Provably Learning Object-Centric Representations.">our earlier work</a> that shows that a model can correctly identify the slots of a assumed ground-truth data-generating process (that is, it can learn object-centric representations) if the model data-generation process is <em>compositional</em> and <em>irreducible</em> (both temrs introduced in our earlier work) and the model is trained on the entire domain.
                             From there, we take four steps to arrive at our final result:
                         </p>
-                        <div style="text-align: center;">
-                            <img src="img/fig2_v10.svg" style="max-width: 700px;" />
+                        <div class="d-flex justify-content-center">
+                            <img src="img/fig2_v10.svg" class="img-fluid" style="max-width: 100%;"/>
                         </div>
                         <ol>
                             <li>We assume all the training data is generated from a <em>slot-supported subset</em> of the data domain, which is any subset that contains all variations of each individual object, but not necessarily all combinations of all objects.</li>
@@ -305,8 +305,8 @@
                         <p>
                             In latent space, recombining the slots of two random samples will most likely lead to a combination of slots that is not part of the training domain. The decoder can produce a valid image of this slot combination since it is additive and therefore invariant to the order and combination of slots.
                         </p>
-                        <div style="text-align: center;">
-                            <img src="img/fig3_v6.svg" style="max-width: 700px;" />
+                        <div class="d-flex justify-content-center">
+                            <img src="img/fig3_v6.svg" class="img-fluid" style="max-width: 100%;"/>
                         </div>
                         <small class="text-muted">
                             The compositional consistency loss enforces cycle-consistency in the model's latent space after slot-wise recombinations, similar to the cycle-consistency in image space enforced by the default reconstruction loss (left).
@@ -316,8 +316,8 @@
                             We can show that the model slot-identifies the ground truth exactly when both losses are minimized.
                             Additionally, we do not explicitly need to optimize for compositionality of the decoder, as this property is implicitly enforced during training.
                         </p>
-                        <div style="text-align: center;">
-                            <img src="img/fig4_v5.svg" style="max-width: 700px;" />
+                        <div class="d-flex justify-content-center">
+                            <img src="img/fig4_v5.svg" class="img-fluid" style="max-width: 100%;"/>
                         </div>
                         <small class="text-muted">
                              We train multiple models in a controlled setting and see that models slot-identify if they minimize both training objectives (left) and that  compositionality is implicitly satisfied (right).
@@ -343,8 +343,8 @@
                         <p>
                             Second, as with a vanilla autoencoder, we need to add our compositional consistency training objective to enable the whole model to generalize.
                         </p>
-                        <div style="text-align: center;">
-                            <img src="img/fig5_v11.svg" style="max-width: 700px;" />
+                        <div class="d-flex justify-content-center">
+                            <img src="img/fig5_v11.svg" class="img-fluid" style="max-width: 100%;"/>
                         </div>
                         <small class="text-muted">
                             Slot Attention fails to generalize compositionally out-of-the-box, but modifying it to satisfy additivity and training with the compositional consistency loss alleviates this.
