@@ -18,7 +18,7 @@
     <meta property="og:title" content="Provable Compositional Generalization for Object-Centric Learning">
     <meta property="og:description"
         content="Learning representations that generalize to novel compositions of known concepts is crucial for bridging the gap between human and machine perception. One prominent effort is learning object-centric representations, which are widely conjectured to enable compositional generalization. Yet, it remains unclear when this conjecture will be true, as a principled theoretical or empirical understanding of compositional generalization is lacking. In this work, we investigate when compositional generalization is guaranteed for object-centric representations through the lens of identifiability theory. We show that autoencoders that satisfy structural assumptions on the decoder and enforce encoder-decoder consistency will learn object-centric representations that provably generalize compositionally. We validate our theoretical result and highlight the practical relevance of our assumptions through experiments on synthetic image data.">
-    <meta property="og:image" content="https://brendel-group.github.io/objects-compositional-generalization/img/intro.svg">
+    <meta property="og:image" content="https://brendel-group.github.io/objects-compositional-generalization/img/fig1_v12.svg">
 
     <!-- Twitter -->
     <meta property="twitter:card" content="summary_large_image">
@@ -26,7 +26,7 @@
     <meta property="twitter:title" content="Provable Compositional Generalization for Object-Centric Learning">
     <meta property="twitter:description"
         content="Learning representations that generalize to novel compositions of known concepts is crucial for bridging the gap between human and machine perception. One prominent effort is learning object-centric representations, which are widely conjectured to enable compositional generalization. Yet, it remains unclear when this conjecture will be true, as a principled theoretical or empirical understanding of compositional generalization is lacking. In this work, we investigate when compositional generalization is guaranteed for object-centric representations through the lens of identifiability theory. We show that autoencoders that satisfy structural assumptions on the decoder and enforce encoder-decoder consistency will learn object-centric representations that provably generalize compositionally. We validate our theoretical result and highlight the practical relevance of our assumptions through experiments on synthetic image data.">
-    <meta property="twitter:image" content="https://brendel-group.github.io/objects-compositional-generalization/img/intro.svg">
+    <meta property="twitter:image" content="https://brendel-group.github.io/objects-compositional-generalization/img/fig1_v12.svg">
 
     <!-- Bootstrap CSS -->
     <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.0/css/bootstrap.min.css"
@@ -125,9 +125,9 @@
                 <div class="row text-center mb-4">
                     <div class="col-sm-4 mb-4">
                         Thaddäus Wiedemer*
-                        <a href="mailto:thaddaeus.wiedemer@gmail.com"><i class="far fa-envelope"></i></a>
+                        <a href="mailto:thaddaeus.wiedemer@gmail.com"><i class="far fa-envelope"></i></a><br>
                         <!-- <a href="https://rzimmermann.com" target="_blank"><i class="fas fa-link"></i></a></br> -->
-                        MPI-IS, University of Tübingen
+                        MPI-IS, University of Tübingen, Tübingen AI Center
                     </div>
                     <div class="col-sm-4 mb-4">
                         Jack Brady*
@@ -137,12 +137,12 @@
                     <div class="col-sm-4 mb-4">
                         Alexander Panfilov*
                         <a href="mailto:kotekjedi@gmail.com"><i class="far fa-envelope"></i></a><br>
-                        University of Tübingen
+                        University of Tübingen, MPI-IS, TÜbingen AI Center
                     </div>
                     <div class="col-sm-4 mb-4">
                         Attila Juhos*
                         <a href="mailto:attila.juhos@tuebingen.mpg.de"><i class="far fa-envelope"></i></a><br>
-                        MPI-IS
+                        MPI-IS, University of Tübingen, Tübingen AI Center
                     </div>
                     <div class="col-sm-4 mb-4">
                         Matthias Bethge
@@ -152,13 +152,13 @@
                     <div class="col-sm-4 mb-4">
                         Wieland Brendel
                         <a href="mailto:wieland.brendel@tue.mpg.de"><i class="far fa-envelope"></i></a><br>
-                        MPI-IS, ELLIS Institute Tübingen
+                        MPI-IS, ELLIS Institute Tübingen, Tübingen AI Center
                     </div>
                 </div>
                 <!-- End author list-->
 
                 <div class="row text-center">
-                    <div class="col-sm-4 mb-4">
+                    <div class="col-sm-4 mb-4 offset-sm-2">
                         <h4>
                             <a href="https://arxiv.org/abs/2310.05327" target="_blank">
                                 <i class="fas fa-file-alt"></i>
@@ -238,84 +238,117 @@
                 </div>
 
                 <div class="row mt-2">
-                    <h3>Motivation</h3>
+                    <h3>Overview</h3>
                 </div>
                 <div class="row mt-2 row-dense">
                     <div class="col-12">
                         <p>
-                            Scaling models up both in terms of model and dataset size has fueled a lot of the progress that models have made in terms of performance and robustness. We now ask whether this development has also incidentally led to more interpretable models. To answer this question, we perform a large-scale psychophysics experiment to investigate the interpretability of multiple models through the two most-used mechanistic interpretability methods. However, we do not find any improvement, but rather the opposite: GoogLeNet, from ten years ago, is still more interpretable than eight state-of-the-art vision models!
+                            Object-centric representations encode each object in a sence in a separate slot.
+                            Because of this, they are thought to generalize compositionlly, which means an object-centric model should be able to extract the correct representation for unseen combinations of observed objects.
+                            However, in practice, when we train an object-centric autoencoder on a training set that only contains some object combinations, we find that the model performs well for seen combinations, but not for unseen ones.
                         </p>
-                    </div>
-                </div>
-                <div class="row mt-2">
-                    <div class="col-12">
+                        <p>   
+                            We pose compositional generalization as a slot identifiability problem: Is the model able to reconstruct the ground-truth slot on the training set?
+                            If so, does this ability generalize to unseen combinations of objects?
+                        </p>
+                        <p>
+                            We show that if the training set is chosen correctly, if the decoder of the model is additive, and if we train with an additional loss term that we dub <em>compositional consistency loss</em>, the model generalizes compositionally in this sense.
+                        </p>
                         <div style="text-align: center;">
-                            <img src="img/intro.svg" style="max-width: 700px;" />
+                            <img src="img/fig1_v12.svg" style="max-width: 700px;" />
                         </div>
                         <small class="text-muted">
                             <p>
-                                We perform a large-scale psychophysics experiment to investigate the interpretability of nine networks through the two most-used mechanistic interpretability methods. We see that scaling has not led to increased interpretability. We release a large dataset called <b>I</b>mageNet <b>M</b>echanistic <b>I</b>nterpretability that contains human interpretability scores. We expect our dataset to enable building automated measures for quantifying the interpretability of models and, thus, bootstrap the development of more interpretable models.
+                                We understand compositional generalization in object-centric learning as the ability of a model to represent the objects in a scene in distinct slots, even for unseen object combinations.
+                                By plotting the reconstruction error over the entire domain, we see that an additive decoder by itself generates valid images within and outside of the training set, that is, it generalizes (A).
+                                But put together with the encoder, the reconstruction error shoots up outside of the training domain—the model is unable to generalize (B).
+                                Only if we add our proposed <em>compositional consistency</em> objective that aligns the encoder with the decoder is the entire mdoel able to generalize (C).
                             </p>
                         </small>
                     </div>
                 </div>
 
                 <div class="row mt-2">
-                    <h3>Has scaling models in terms of their dataset and model size improved interpretability?</h3>
+                    <h3>How do we formalize compositional generalization and which assumptions do we make?</h3>
                 </div>
                 <div class="row mt-2 row-dense">
                     <div class="col-12">
                         <p>
-                            We leverage the experimental paradigm proposed in <a href="https://bethgelab.github.io/testing_visualizations/" data-toggle="tooltip" title data-original-title="Borowski et al. 2021. Exemplary Natural Images Explain CNN Activations Better than State-of-the-Art Feature Visualizations.">our earlier work</a> to measure the unit-wise interpretabilty afforded by an explanation. In a large-scale psychophysical experiment, we compare models that differ in architecture, training objectives, and training data. While these models reflect the advancements in model design in recent years (sorted by model size first and then dataset size), we surprisingly see little to no effect of these design choices on mechanistic, per-unit interpretability.
-                            While these results might appear promising, since all models yield scores of about 80% (natural), note that we demonstrate that interpretability is far more limited than it first appears and breaks down dramatically as the task is made harder (see Section 4.4 of the paper).
+                            We start from a result from <a href="https://brendel-group.github.io/objects-identifiability/" data-toggle="tooltip" title data-original-title="Brady et al. 2023. Provably Learning Object-Centric Representations.">our earlier work</a> that shows that a model can correctly identify the slots of a assumed ground-truth data-generating process (that is, it can learn object-centric representations) if the model data-generation process is <em>compositional</em> and <em>irreducible</em> (both temrs introduced in our earlier work) and the model is trained on the entire domain.
+                            From there, we take four steps to arrive at our final result:
                         </p>
-                    </div>
-                </div>
-                <div class="col-12">
-                    <div style="text-align: center;">
-                        <img src="img/model_comparison.svg" style="max-width: 550px;" />
-                    </div>
-                    <small class="text-muted">
+                        <div style="text-align: center;">
+                            <img src="img/fig2_v10.svg" style="max-width: 700px;" />
+                        </div>
+                        <ol>
+                            <li>We assume all the training data is generated from a <em>slot-supported subset</em> of the data domain, which is any subset that contains all variations of each individual object, but not necessarily all combinations of all objects.</li>
+                            <li>We extend our earlier result to show that a <em>compositional</em> autoencoder trained via a reconstruction objective can still identify the ground-truth slots on this training domain if the slot-supported subset is also convex. Note that the recovered training subset of the latent space (blue) is not exactly the same as the ground-truth, since the model recovers it only up to some permissible ambiguities.</li>
+                            <li>Since the model recovered the individual slots, we can simply recombine them to obtain unseen combinations of objects in the model's latent space. We show that if the decoder is additive, its reconstructions of these unseen combinations correspond exactly to images of unseen object combinations.</li>
+                            <li>However, for unseen object combinations, the encoder initially does not produce representations that can be expressed by a recombination of slots in the models latent space. We therefore need to align the encoder output with the expected input to the decoder. We achieve this via our proposed <em>compositional consistency loss</em>.</li>
+                        </ol>
                         <p>
-                            We compare the mechanistic interpretability of nine vision models for two interpretability methods: maximally activating dataset samples (natural, orange) and feature visualizations (synthetic, blue).
+                            We arrive at a model whose representations slot-identify the ground-truth latent space, even for unseen combinations of objects.
                         </p>
-                    </small>
+                    </div>
                 </div>
 
 
                 <div class="row mt-2">
-                    <h3>Are better ImageNet classifiers more interpretable?</h3>
+                    <h3>What does this look like in practice?</h3>
                 </div>
                 <div class="row mt-2 row-dense">
                     <div class="col-12">
                         <p>
-                            While the investigated models have strongly varying classification performance, as measured by the ImageNet validation accuracy, their interpretability shows less variation for both natural exemplars and synthetic feature visualizations. More accurate classifiers are not necessarily more interpretable. For synthetic feature visualizations, there might even be a regression of interpretability with increasing accuracy. 
+                            From an implementation perspective, our biggest contribution is the compositional consistency loss that is included as an additional training objective to the default reconstruction loss.
+                            We can implement by taking the model's latent representation of the batch during the forward pass, randomly recombining slots between samples, and then applying the decoder and encoder to it. The resulting latent representation of each sample should be consistent with the recombination of latents, which we can measure, e.g., via a L2-loss.
                         </p>
+                        <p>
+                            In latent space, recombining the slots of two random samples will most likely lead to a combination of slots that is not part of the training domain. The decoder can produce a valid image of this slot combination since it is additive and therefore invariant to the order and combination of slots.
+                        </p>
+                        <div style="text-align: center;">
+                            <img src="img/fig3_v6.svg" style="max-width: 700px;" />
+                        </div>
+                        <small class="text-muted">
+                            The compositional consistency loss enforces cycle-consistency in the model's latent space after slot-wise recombinations, similar to the cycle-consistency in image space enforced by the default reconstruction loss (left).
+                            Most recombinations of slots between samples in a batch correspond to object combinations outside of the training domain (right).
+                        </small>
+                        <p>
+                            We can show that the model slot-identifies the ground truth exactly when both losses are minimized.
+                            Additionally, we do not explicitly need to optimize for compositionality of the decoder, as this property is implicitly enforced during training.
+                        </p>
+                        <div style="text-align: center;">
+                            <img src="img/fig4_v5.svg" style="max-width: 700px;" />
+                        </div>
+                        <small class="text-muted">
+                             We train multiple models in a controlled setting and see that models slot-identify if they minimize both training objectives (left) and that  compositionality is implicitly satisfied (right).
+                        </small>
                     </div>
-                </div>
-                <div class="col-12">
-                    <div style="text-align: center;">
-                        <img src="img/model_accuracy_vs_performance.svg" style="max-width: 350px;" />
-                    </div>
-                    <small class="text-muted">
-                        Higher classification performance does not come with higher interpretability, for neither natural exemplars (orange) nor synthetic feature visualizations (blue).
-                    </small>
                 </div>
 
 
                 <div class="row mt-2">
-                    <h3>ImageNet Mechanistic Interpretability: A new dataset for automated alignment</h3>
+                    <h3>What does this mean for object-centric methods like Slot Attention?</h3>
                 </div>
                 <div class="row mt-2 row-dense">
                     <div class="col-12">
                         <p>
-                            The results above paint a rather disappointing picture of the state of mechanistic interpretability of computer vision models: Just by scaling up models and datasets, we do not get increased interpretability for free, suggesting that if we want this property, we need to <it>explicitly</it> optimize for it.
+                            The popular object-centric method <a href="https://arxiv.org/abs/2006.15055" target="_blank" data-toggle="tooltip" title data-original-title="Locatello et al. 2020. Object-Centric Learning with Slot Attention">Slot Attention</a> fails to generalize compositionally <out-of-the-box class=""></out-of-the-box>
+                            Given our theoretical insights, we can understand what's going wrong.
                         </p>
-
                         <p>
-                            To enable research on such automated evaluations, we release our experimental results as a new dataset called <it><b>I</b>mageNet <b>M</b>echanistic <b>I</b>nterpretability</it> (IMI). Note that this is the <it>first</it> dataset containing unit-wise interpretability measurements obtained through psychophysical experiments for multiple explanation methods and models. We hope that this dataset will enable the development of automated interpretability measures that can be used to directly optimize models for mechanistic interpretability.
-                            The <a href="https://zenodo.org/record/8131197" target="_blank">dataset</a> itself should be seen as a collection of labels and meta information without fixed features that should be predictive of a unit's interpretability. Moreover, finding and constructing features that are predictive of the recorded labels will be one of the open challenges posed by this line of research.
+                            First, its decoder is not additive since it uses a softmax operation across slots.
+                            Therefore, the decoder does not generalize.
+                            Replacing the softmax with a slot-wise sigmoid fixes this issue.
                         </p>
+                        <p>
+                            Second, as with a vanilla autoencoder, we need to add our compositional consistency training objective to enable the whole model to generalize.
+                        </p>
+                        <div style="text-align: center;">
+                            <img src="img/fig5_v11.svg" style="max-width: 700px;" />
+                        </div>
+                        <small class="text-muted">
+                            Slot Attention fails to generalize compositionally out-of-the-box, but modifying it to satisfy additivity and training with the compositional consistency loss alleviates this.
+                        </small>
                     </div>
                 </div>
 
@@ -325,9 +358,9 @@
                 <div class="row mt-2">
                     <div class="col-12 collapse-container">
                         <p class="collapse" id="acknowledgmentsText" aria-expanded="false">
-                            We thank Felix Wichmann, Evgenia Rusak, Robert-Jan Bruintjes, Robert Geirhos, Matthias Kümmerer, and Matthias Tangemann for their valuable feedback.
-                            This work was supported by the German Federal Ministry of Education and Research (BMBF): Tübingen AI Center, FKZ: 01IS18039A. WB acknowledges financial support via an Emmy Noether Grant funded by the German Research Foundation (DFG) under grant no. BR 6382/1-1 and via the Open Philantropy Foundation funded by the Good Ventures Foundation. WB is a member of the Machine Learning Cluster of Excellence, EXC number 2064/1 – Project number 390727645. This research utilized compute resources at the Tübingen Machine Learning Cloud, DFG FKZ INST 37/1057-1 FUGG.
-                            The authors thank the <a href="https://imprs.is.mpg.de/" target="_blank">International Max Planck Research School for Intelligent Systems (IMPRS-IS)</a> for supporting RSZ and TK.
+                            We thank (in alphabetical order): Andrea Dittadi, Egor Krasheninnikov, Evgenii Kortukov, Julius von Kügelgen, Prasanna Mayilvahannan, Roland Zimmermann, Sébastien Lachapelle, and Thomas Kipf for helpful insights and discussions.<br>
+                            This work was supported by the German Federal Ministry of Education and Research (BMBF): Tübingen AI Center, FKZ: 01IS18039A, 01IS18039B. WB acknowledges financial support via an Emmy Noether Grant funded by the German Research Foundation (DFG) under grant no. BR 6382/1-1 and via the Open Philantropy Foundation funded by the Good Ventures Foundation. WB is a member of the Machine Learning Cluster of Excellence, EXC number 2064/1 – Project number 390727645. This research utilized compute resources at the Tübingen Machine Learning Cloud, DFG FKZ INST 37/1057-1 FUGG.<br>
+                            The authors thank the <a href="https://imprs.is.mpg.de/" target="_blank">International Max Planck Research School for Intelligent Systems (IMPRS-IS)</a> for supporting TW and AJ.
                         </p>
                        <a role="button" id="moreless" class="collapsed" data-toggle="collapse" href="#acknowledgmentsText" aria-expanded="false" aria-controls="acknowledgmentsText"></a>
                     </div>
@@ -336,12 +369,19 @@
                     <h3>BibTeX</h3>
                 </div>
                 <div class="row">
-                    <p>If you find our study or our dataset helpful, please cite our paper:</p>
+                    <p>If you find our study helpful, please cite our paper:</p>
                 </div>
                 <div class="row justify-content-md-center">
-                    <div class="col-sm-8 rounded p-3 m-2" style="background-color:lightgray;">
+                    <div class="col-sm-10 rounded p-3 m-2" style="background-color:lightgray;">
                         <small class="code">
-                            @inproceedings{zimmermann2023scale,<br>
+                            @inproceedings{wiedemer2024provable,<br>
+                                title={Provable Compositional Generalization for Object-Centric Learning},<br>
+                                author={Thadd{\"a}us Wiedemer and Jack Brady and Alexander Panfilov and Attila Juhos and Matthias Bethge and Wieland Brendel},<br>
+                                booktitle={The Twelfth International Conference on Learning Representations},<br>
+                                year={2024},<br>
+                                url={https://openreview.net/forum?id=7VPTUWkiDQ}<br>
+                            }
+                            <!-- @inproceedings{zimmermann2023scale,<br>
                             &nbsp;&nbsp;author = { <br>
                             &nbsp;&nbsp;&nbsp;&nbsp;Zimmermann, Roland S. and<br>
                             &nbsp;&nbsp;&nbsp;&nbsp;Klein, Thomas and<br>
@@ -356,7 +396,7 @@
                                 &nbsp;&nbsp;&nbsp;&nbsp;Information Processing Systems<br>
                             &nbsp;&nbsp;},<br>
                             &nbsp;&nbsp;year = {2023},<br>
-                            }
+                            } -->
                         </small>
                     </div>
                 </div>
